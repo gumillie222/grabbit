@@ -31,6 +31,13 @@ export default function App() {
       <Text style={styles.text4}>Josefin Sans Light Italic</Text>
       <Text style={styles.text5}>Josefin Sans Regular Italic</Text>
       <Text style={styles.text6}>Josefin Sans Bold Italic</Text>
+
+      <View style={styles.color1}></View>
+      <View style={styles.color2}></View>
+      <View style={styles.color3}></View>
+      <View style={styles.color4}></View>
+      <View style={styles.color5}></View>
+      <View style={styles.color6}></View>
     </View>
   );
 }
@@ -38,7 +45,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#e8e5dc',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -65,5 +72,35 @@ const styles = StyleSheet.create({
   text6: {
     fontFamily: 'JosefinSans_700Bold_Italic',
     fontSize: 20,
+  },
+  color1: {
+    backgroundColor: '#f0ceb0',
+    width: 40,
+    height: 40,
+  },
+  color2: {
+    backgroundColor: '#e55347',
+    width: 40,
+    height: 40,
+  },
+  color3: {
+    backgroundColor: '#d9d9d9',
+    width: 40,
+    height: 40,
+  },
+  color4: {
+    backgroundColor: '#b89c86',
+    width: 40,
+    height: 40,
+  },
+  color5: {
+    backgroundColor: '#c4ae9a',
+    width: 40,
+    height: 40,
+  },
+  color6: {
+    backgroundColor: '#34495e',
+    width: 40,
+    height: 40,
   },
 });
