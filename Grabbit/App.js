@@ -8,6 +8,8 @@ import { JosefinSans_300Light_Italic } from '@expo-google-fonts/josefin-sans/300
 import { JosefinSans_400Regular_Italic } from '@expo-google-fonts/josefin-sans/400Regular_Italic';
 import { JosefinSans_700Bold_Italic } from '@expo-google-fonts/josefin-sans/700Bold_Italic';
 
+import { FontAwesome5 } from '@expo/vector-icons';
+
 export default function App() {
   let [fontsLoaded] = useFonts({
     JosefinSans_300Light,
@@ -38,6 +40,9 @@ export default function App() {
       <View style={styles.color4}></View>
       <View style={styles.color5}></View>
       <View style={styles.color6}></View>
+
+      <FontAwesome5 name="list-alt" size={24} color="black" />
+      <FontAwesome5 name="user" size={24} color="black" />
     </View>
   );
 }
