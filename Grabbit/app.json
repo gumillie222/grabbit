@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Grabbit",
-    "slug": "Grabbit",
+    "name": "grabbit",
+    "slug": "grabbit",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
