@@ -1,0 +1,38 @@
+# --- Node & Expo ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# --- Expo build outputs ---
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.tar.gz
+
+# --- Metro / React Native caches ---
+*.log
+*.tmp
+*.swp
+*.swo
+.expo/
+.cache/
+coverage/
+android/
+ios/
+build/
+
+# --- macOS junk ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- VS Code workspace ---
+.vscode/
+.idea/
+
+# --- Environment variables / secrets ---
+.env
+.env.*
