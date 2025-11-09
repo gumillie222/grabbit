@@ -6,20 +6,6 @@ It demonstrates:
 * AI-powered item suggestions using OpenAI's API
 * A clean, mobile-first UI for shared shopping planning
 
-## Repository Structure
-
-Grabbit/
-├── Grabbit/                # React Native (Expo) frontend
-│   ├── App.js
-│   ├── RealtimeDemoScreen.js
-│   ├── useRealtime.js
-│   ├── StylesScreen.js
-│   └── ...
-│
-└── realtime-server/        # Node.js backend (Express + Socket.IO + OpenAI)
-    ├── server.js
-    ├── package.json
-    └── .env                # Contains OpenAI API key
 
 ## Prerequisites
 * Xcode (for iOS simulator)
@@ -41,11 +27,12 @@ npm start
 ```
 
 You can now choose one of the following:
-* Option A – Web
+
+Option A – Web
 - Press w in the terminal
 - Runs in browser at http://localhost:8081
 
-* Option B – iOS Simulator
+Option B – iOS Simulator
 - Press i in the terminal
 - Runs on the Xcode iOS simulator
 - Works directly with http://localhost:3000 backend
