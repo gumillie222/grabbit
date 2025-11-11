@@ -24,10 +24,11 @@ const COLORS = {
 };
 
 const MEMBERS = ['Me', 'A', 'B']; // demo users
+const CURRENT_USER = 'Me';
 
 const BASE_URL =
   Platform.OS === 'web' || Platform.OS === 'ios'
-    ? 'http://localhost:3000'
+    ? 'http://localhost:4000'
     : 'http://10.0.2.2:3000';
 
 
@@ -48,12 +49,14 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
   const [draftBought, setDraftBought] = useState(false);
   const [draftPrice, setDraftPrice] = useState('');
   const [draftSharedBy, setDraftSharedBy] = useState(['Me']);
+  const [draftPaidBy, setDraftPaidBy] = useState(CURRENT_USER);
 
   // modal for marking an existing item as bought (toggling chip on list)
   const [boughtModalOpen, setBoughtModalOpen] = useState(false);
   const [boughtItem, setBoughtItem] = useState(null);
   const [boughtPrice, setBoughtPrice] = useState('');
   const [boughtSharedBy, setBoughtSharedBy] = useState(['Me']);
+  const [boughtPaidBy, setBoughtPaidBy] = useState(CURRENT_USER);
 
   const resetDraft = () => {
     setDraftName('');
@@ -63,6 +66,7 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
     setDraftBought(false);
     setDraftPrice('');
     setDraftSharedBy(['Me']);
+    setDraftPaidBy(CURRENT_USER);
   };
 
   const openNewItemForm = () => {
@@ -84,6 +88,7 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
         ? item.sharedBy
         : ['Me']
     );
+    setDraftPaidBy(item.paidBy || CURRENT_USER);
     setItemFormOpen(true);
   };
 
@@ -111,6 +116,7 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
               bought: draftBought,
               price: priceNumber,
               sharedBy: draftBought ? draftSharedBy : [],
+              paidBy: draftPaidBy,
             }
           : it
       );
@@ -125,6 +131,7 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
         bought: draftBought,
         price: priceNumber,
         sharedBy: draftBought ? draftSharedBy : [],
+        paidBy: draftPaidBy,
       };
       items = [...state.items, newItem];
     }
@@ -162,8 +169,11 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
       if (!target.bought) {
         // open "mark as bought" modal
         setBoughtItem(target);
-        setBoughtPrice('');
-        setBoughtSharedBy(['Me']);
+        setBoughtPrice(target.price ? String(target.price) : '');
+        setBoughtSharedBy(
+          target.sharedBy && target.sharedBy.length ? target.sharedBy : ['Me']
+        );
+        setBoughtPaidBy(target.paidBy || CURRENT_USER);
         setBoughtModalOpen(true);
         return;
       }
@@ -197,6 +207,7 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
             bought: true,
             price: priceNumber,
             sharedBy: boughtSharedBy,
+            paidBy: boughtPaidBy,
           }
         : it
     );
@@ -206,11 +217,17 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
 
     setBoughtModalOpen(false);
     setBoughtItem(null);
+    setBoughtPrice('');
+    setBoughtSharedBy(['Me']);
+    setBoughtPaidBy(CURRENT_USER);
   };
 
   const cancelBoughtModal = () => {
     setBoughtModalOpen(false);
     setBoughtItem(null);
+    setBoughtPrice('');
+    setBoughtSharedBy(['Me']);
+    setBoughtPaidBy(CURRENT_USER);
   };
 
   const toggleBoughtSharedBy = (who) => {
@@ -288,22 +305,60 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
     setSuggestions((prev) => prev.map((s) => ({ ...s, selected: false })));
   };
 
-  const setBudget = (txt) => {
-    const next = {
-      ...state,
-      finances: { ...state.finances, budget: Number(txt) || 0 },
-    };
-    setState(next);
-    send(next);
-  };
-  const setSpent = (txt) => {
-    const next = {
-      ...state,
-      finances: { ...state.finances, spent: Number(txt) || 0 },
-    };
-    setState(next);
-    send(next);
-  };
+  const balancesMap = MEMBERS.reduce((acc, member) => {
+    acc[member] = { paid: 0, owes: 0 };
+    return acc;
+  }, {});
+
+  state.items.forEach((item) => {
+    if (!item.bought) return;
+    const price = Number(item.price) || 0;
+    const participants =
+      item.sharedBy && item.sharedBy.length ? item.sharedBy : [item.paidBy || CURRENT_USER];
+    const split = participants.length || 1;
+    const share = split ? price / split : price;
+
+    participants.forEach((member) => {
+      if (!balancesMap[member]) balancesMap[member] = { paid: 0, owes: 0 };
+      balancesMap[member].owes += share;
+    });
+
+    const payer = item.paidBy || CURRENT_USER;
+    if (!balancesMap[payer]) balancesMap[payer] = { paid: 0, owes: 0 };
+    balancesMap[payer].paid += price;
+  });
+
+  const balanceList = MEMBERS.map((member) => {
+    const entry = balancesMap[member] || { paid: 0, owes: 0 };
+    const net = entry.paid - entry.owes;
+    return { member, paid: entry.paid, owes: entry.owes, net };
+  });
+
+  const creditors = [];
+  const debtors = [];
+  balanceList.forEach(({ member, net }) => {
+    const rounded = Math.round(net * 100) / 100;
+    if (rounded > 0.01) creditors.push({ member, amount: rounded });
+    else if (rounded < -0.01) debtors.push({ member, amount: -rounded });
+  });
+
+  const settlements = [];
+  let ci = 0;
+  let di = 0;
+  while (ci < creditors.length && di < debtors.length) {
+    const payAmount = Math.min(creditors[ci].amount, debtors[di].amount);
+    if (payAmount > 0.009) {
+      settlements.push({
+        from: debtors[di].member,
+        to: creditors[ci].member,
+        amount: payAmount,
+      });
+    }
+    creditors[ci].amount -= payAmount;
+    debtors[di].amount -= payAmount;
+    if (creditors[ci].amount < 0.01) ci += 1;
+    if (debtors[di].amount < 0.01) di += 1;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -364,6 +419,43 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
             </View>
           )}
 
+          <View style={styles.finances}>
+            <Text style={styles.sectionTitle}>Shared finances</Text>
+            {balanceList.map((entry) => (
+              <View key={entry.member} style={styles.financesMemberRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.financesMember}>{entry.member}</Text>
+                  <Text style={styles.financesSubText}>
+                    paid ${entry.paid.toFixed(2)} · owes ${entry.owes.toFixed(2)}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.financesNet,
+                    entry.net >= 0 ? styles.netPositive : styles.netNegative,
+                  ]}
+                >
+                  {entry.net >= 0 ? '+' : '-'}${Math.abs(entry.net).toFixed(2)}
+                </Text>
+              </View>
+            ))}
+
+            {settlements.length > 0 ? (
+              <View style={styles.settlementBox}>
+                <Text style={styles.settlementTitle}>Who pays whom</Text>
+                {settlements.map(({ from, to, amount }) => (
+                  <Text key={`${from}->${to}`} style={styles.settlementLine}>
+                    {from} pays {to} ${amount.toFixed(2)}
+                  </Text>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.helperText}>
+                Mark items as bought to auto-calc balances.
+              </Text>
+            )}
+          </View>
+
           {/* List items */}
           <View style={styles.sectionCard}>
             <View style={styles.listHeaderRow}>
@@ -399,7 +491,9 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
                     {item.bought && (
                       <Text style={styles.itemMeta}>
                         ${item.price?.toFixed(2)} · shared by{' '}
-                        {item.sharedBy.join(', ') || '—'}
+                        {item.sharedBy && item.sharedBy.length
+                          ? item.sharedBy.join(', ')
+                          : '—'}
                       </Text>
                     )}
                   </View>
@@ -523,6 +617,29 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                <Text style={styles.modalLabel}>Paid by</Text>
+                <View style={styles.modalToggleRow}>
+                  {MEMBERS.map((m) => (
+                    <TouchableOpacity
+                      key={`paid-${m}`}
+                      style={[
+                        styles.memberChip,
+                        draftPaidBy === m && styles.memberChipOn,
+                      ]}
+                      onPress={() => setDraftPaidBy(m)}
+                    >
+                      <Text
+                        style={[
+                          styles.memberChipText,
+                          draftPaidBy === m && { color: '#fff' },
+                        ]}
+                      >
+                        {m}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </>
             )}
 
@@ -573,6 +690,29 @@ export default function RealtimeDemoScreen({ serverUrl, room = 'demo1' }) {
                     style={[
                       styles.memberChipText,
                       boughtSharedBy.includes(m) && { color: '#fff' },
+                    ]}
+                  >
+                    {m}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.modalLabel}>Paid by</Text>
+            <View style={styles.modalToggleRow}>
+              {MEMBERS.map((m) => (
+                <TouchableOpacity
+                  key={`bought-paid-${m}`}
+                  style={[
+                    styles.memberChip,
+                    boughtPaidBy === m && styles.memberChipOn,
+                  ]}
+                  onPress={() => setBoughtPaidBy(m)}
+                >
+                  <Text
+                    style={[
+                      styles.memberChipText,
+                      boughtPaidBy === m && { color: '#fff' },
                     ]}
                   >
                     {m}
@@ -820,15 +960,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d9d9d9',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  numInput: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#d9d9d9',
-    borderRadius: 6,
-    padding: 8,
-    minWidth: 90,
+  financesMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
   },
+  financesMember: { fontSize: 14, fontWeight: '700' },
+  financesSubText: { fontSize: 12, color: '#555' },
+  financesNet: { fontSize: 16, fontWeight: '700' },
+  netPositive: { color: '#1a7f37' },
+  netNegative: { color: '#c0392b' },
+  settlementBox: {
+    marginTop: 12,
+    backgroundColor: '#f7f2ea',
+    borderRadius: 8,
+    padding: 10,
+  },
+  settlementTitle: { fontWeight: '700', marginBottom: 6 },
+  settlementLine: { fontSize: 13, marginBottom: 2 },
 
   // Modal styles
   modalBackdrop: {
