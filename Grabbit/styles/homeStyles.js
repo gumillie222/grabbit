@@ -1,26 +1,7 @@
 import { StyleSheet } from 'react-native';
+import { colors, fonts } from './styles';
 
-export const colors = {
-  background: '#e8e5dc', // Beige
-  cardBg: '#f0ceb0',     // Tan
-  text: '#34495e',       // Dark Blue/Grey
-  accent: '#e55347',     // Red/Orange
-  color5: '#d9d9d9',     // Light Grey
-  color6: '#b89c86',     // Brownish
-  color7: '#c4ae9a',     // Light Brown
-
-  // --- NEW COLORS ---
-  modalBg: '#f7e0c8',         // Light orange modal background
-  modalInputBg: '#e8e5dc',   // Input background (same as main bg)
-  modalPlaceholder: '#b89c86', // Placeholder text color (Brownish)
-  modalCommentText: '#e55347', // "Comments" label color (Accent)
-};
-
-export const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+export const homeStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -31,9 +12,8 @@ export const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 40,
-    fontWeight: '800', // Fallback weight
+    fontFamily: fonts.bold, // Added Font
     color: colors.text,
-    // FontFamily is applied inline in HomeScreen.js
   },
   addButton: {
     backgroundColor: colors.accent,
@@ -45,7 +25,7 @@ export const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 20, // Reduced padding (was 100 for footer)
+    paddingBottom: 20,
   },
   grid: {
     flexDirection: 'row',
@@ -54,12 +34,12 @@ export const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.cardBg,
-    width: '47%', // Changed back to 47% from 48%
-    aspectRatio: 1, // This keeps the tile square
+    width: '47%',
+    aspectRatio: 1,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
-    justifyContent: 'space-between', // Pushes title to top
+    justifyContent: 'space-between',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -68,38 +48,26 @@ export const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 22,
-    fontWeight: '500', // Fallback weight
+    fontFamily: fonts.regular, // Added Font
     color: colors.text,
     lineHeight: 28,
-    // FontFamily is applied inline in HomeScreen.js
   },
-  iconContainer: { // This style is no longer used, but harmless
-    alignItems: 'flex-end',
-  },
-
-  // --- NEW MODAL STYLES ---
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent background
-  },
+  
+  // --- Modal Styles ---
   modalContainer: {
     width: '90%',
     backgroundColor: colors.modalBg,
     borderRadius: 20,
     padding: 25,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
   },
   modalLabel: {
     fontSize: 24,
+    fontFamily: fonts.bold, // Added Font
     color: colors.modalPlaceholder,
     marginBottom: 10,
   },
@@ -108,6 +76,7 @@ export const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 15,
     fontSize: 18,
+    fontFamily: fonts.regular, // Added Font
     color: colors.text,
     marginBottom: 20,
   },
@@ -125,6 +94,7 @@ export const styles = StyleSheet.create({
   },
   participantButtonText: {
     fontSize: 18,
+    fontFamily: fonts.bold, // Added Font
     color: colors.text,
   },
   participantAddButton: {
@@ -138,6 +108,7 @@ export const styles = StyleSheet.create({
   },
   modalCommentLabel: {
     fontSize: 20,
+    fontFamily: fonts.bold, // Added Font
     color: colors.modalCommentText,
     marginBottom: 10,
   },
@@ -146,27 +117,28 @@ export const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 15,
     fontSize: 16,
+    fontFamily: fonts.regular, // Added Font
     color: colors.text,
     height: 100,
-    textAlignVertical: 'top', // Ensures text starts at the top
+    textAlignVertical: 'top',
     marginBottom: 25,
   },
   modalButtonRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 15, // Creates space between buttons
+    gap: 15,
   },
   modalActionButton: {
     width: 50,
     height: 50,
-    borderRadius: 25, // Makes it a circle
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeButton: {
-    backgroundColor: colors.text, // Dark blue/grey
+    backgroundColor: colors.text,
   },
   confirmButton: {
-    backgroundColor: colors.accent, // Red/orange
+    backgroundColor: colors.accent,
   },
 });
