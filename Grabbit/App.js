@@ -1,62 +1,86 @@
-import React from 'react';
+import React, { useCallback } from 'react';
+import { View } from 'react-native';
 import 'react-native-gesture-handler';
-// Import 'getFocusedRouteNameFromRoute'
 import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as SplashScreen from 'expo-splash-screen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { 
+  useFonts,
+  JosefinSans_300Light,
+  JosefinSans_400Regular,
+  JosefinSans_700Bold,
+  JosefinSans_300Light_Italic,
+  JosefinSans_400Regular_Italic,
+  JosefinSans_700Bold_Italic 
+} from '@expo-google-fonts/josefin-sans';
 
-// Import our new Stack Navigator
 import HomeStackNavigator from './HomeStackNavigator'; 
-// Import the other screens
 import StylesScreen from './StylesScreen';
 import RealtimeDemoScreen from './RealtimeDemoScreen';
 
+SplashScreen.preventAutoHideAsync();
+
 const Tab = createBottomTabNavigator();
 
-// This helper function checks the current screen in the stack
-// and hides the tab bar if it's on the 'EventDetail' screen.
 const getTabBarVisibility = (route) => {
   const routeName = getFocusedRouteNameFromRoute(route);
   const hideOnScreens = ['EventDetail'];
-
-  if (hideOnScreens.includes(routeName)) {
-    return 'none'; // Hides tab bar
-  }
-  return 'flex'; // Shows tab bar
+  if (hideOnScreens.includes(routeName)) return 'none'; 
+  return 'flex'; 
 };
 
 export default function App() {
-  // Put your laptop's LAN IP here (from `ipconfig getifaddr en0`)
-  const SERVER_URL = 'http://10.0.0.162'; // I removed the extra 'http://'
+  const SERVER_URL = 'http://10.0.0.162';
+
+  let [fontsLoaded] = useFonts({
+    JosefinSans_300Light,
+    JosefinSans_400Regular,
+    JosefinSans_700Bold,
+    JosefinSans_300Light_Italic,
+    JosefinSans_400Regular_Italic,
+    JosefinSans_700Bold_Italic,
+  });
+
+  const onLayoutRootView = useCallback(async () => {
+    if (fontsLoaded) {
+      await SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) return null; 
 
   return (
-    <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerTitleAlign: 'center',
-          tabBarActiveTintColor: '#e55347',
-          tabBarInactiveTintColor: '#34495e',
-          // Apply the visibility function
-          tabBarStyle: { 
-            backgroundColor: '#e8e5dc',
-            display: getTabBarVisibility(route),
-          },
-          tabBarIcon: ({ color, size }) => {
-            const map = { Home: 'home', Styles: 'palette', Realtime: 'bolt' };
-            return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
-          },
-          // Hide the tab navigator's header for the Home stack
-          headerShown: route.name !== 'Home',
-        })}
-      >
-        {/* Use the HomeStackNavigator here */}
-        <Tab.Screen name="Home" component={HomeStackNavigator} />
-        <Tab.Screen name="Styles" component={StylesScreen} />
-        <Tab.Screen
-          name="Realtime"
-          children={() => <RealtimeDemoScreen serverUrl={SERVER_URL} room="demo1" />}
-        />
-      </Tab.Navigator>
-    </NavigationContainer>
+    // Wrap everything in SafeAreaProvider
+    <SafeAreaProvider> 
+      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+        <NavigationContainer>
+          <Tab.Navigator
+            screenOptions={({ route }) => ({
+              headerTitleAlign: 'center',
+              tabBarActiveTintColor: '#e55347',
+              tabBarInactiveTintColor: '#34495e',
+              tabBarStyle: { 
+                backgroundColor: '#e8e5dc',
+                display: getTabBarVisibility(route),
+              },
+              tabBarIcon: ({ color, size }) => {
+                const map = { Home: 'home', Styles: 'palette', Realtime: 'bolt' };
+                return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
+              },
+              headerShown: route.name !== 'Home',
+            })}
+          >
+            <Tab.Screen name="Home" component={HomeStackNavigator} />
+            <Tab.Screen name="Styles" component={StylesScreen} />
+            <Tab.Screen
+              name="Realtime"
+              children={() => <RealtimeDemoScreen serverUrl={SERVER_URL} room="demo1" />}
+            />
+          </Tab.Navigator>
+        </NavigationContainer>
+      </View>
+    </SafeAreaProvider>
   );
 }

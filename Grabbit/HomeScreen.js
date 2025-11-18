@@ -1,33 +1,29 @@
-// HomeScreen.js
-
 import React, { useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Modal,
   TextInput
 } from 'react-native';
+// 1. Import the hook instead of the component
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
-
-// --- NO FONT IMPORTS HERE ANYMORE ---
 
 import { eventsData } from './data/homeScreenData.js';
 import { globalStyles, colors } from './styles/styles.js'; 
 import { homeStyles } from './styles/homeStyles.js'; 
 
 export default function HomeScreen({ navigation }) {
+  // 2. Get the exact safe area insets (top, bottom, left, right)
+  const insets = useSafeAreaInsets();
 
   const [events, setEvents] = useState(eventsData);
   const [newGroupName, setNewGroupName] = useState('');
   const [newComments, setNewComments] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
-
-  // --- REMOVED useFonts HOOK & Loading Check --- 
-  // (Assumes fonts are loaded in App.js before this screen mounts)
 
   const handlePress = (eventTitle) => {
     navigation.navigate('EventDetail', { eventTitle: eventTitle });
@@ -52,7 +48,12 @@ export default function HomeScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={globalStyles.container}>
+    // 3. Apply the top inset as padding. 
+    // We add it to your existing container style.
+    <View style={[
+      globalStyles.container, 
+      { paddingTop: insets.top } 
+    ]}>
       <StatusBar barStyle="dark-content" />
 
       <Modal
@@ -63,7 +64,6 @@ export default function HomeScreen({ navigation }) {
       >
         <View style={globalStyles.modalOverlay}>
           <View style={homeStyles.modalContainer}>
-            
             <Text style={homeStyles.modalLabel}>Group Name</Text>
             <TextInput
               style={homeStyles.modalInput}
@@ -72,7 +72,6 @@ export default function HomeScreen({ navigation }) {
               value={newGroupName}
               onChangeText={setNewGroupName}
             />
-
             <View style={homeStyles.participantsRow}>
               <FontAwesome5 name="users" size={24} color={colors.text} />
               <TouchableOpacity style={homeStyles.participantButton}>
@@ -133,6 +132,6 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }

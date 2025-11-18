@@ -2,54 +2,75 @@ import { StyleSheet } from 'react-native';
 import { colors, fonts } from './styles';
 
 export const detailStyles = StyleSheet.create({
+  // --- Header Area ---
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 24,
+    paddingTop: 20,
   },
   backButton: {
     padding: 5,
+    marginTop: 5,
   },
   titleContainer: {
-    alignItems: 'center',
-    marginTop: 10,
+    alignItems: 'flex-end',
+    paddingLeft: 40, // Added margin/padding from the left side
   },
   titleText: {
-    fontSize: 24,
-    fontFamily: fonts.bold, // Added Font
+    fontSize: 32,
+    fontFamily: fonts.bold,
     color: colors.accent,
+    lineHeight: 34,
   },
   subTitleText: {
-    fontSize: 24,
-    fontFamily: fonts.bold, // Added Font
+    fontSize: 32,
+    fontFamily: fonts.bold,
     color: colors.accent,
+    lineHeight: 34,
   },
+  
+  // --- Participants ---
   participantsRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'flex-start', 
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
+    paddingHorizontal: 24,
+    marginTop: 20,
+    marginBottom: 30,
+    gap: 15, // Creates even space between all icons (Me, A, +)
   },
   addParticipant: {
-    marginLeft: 8,
+    // Removed marginLeft (gap handles it now)
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
-  // Tabs
+  // --- Tabs ---
   tabContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 40,
-    marginBottom: 5,
+    justifyContent: 'center', // Centers the tabs horizontally
+    paddingHorizontal: 24,
+    marginBottom: 15,
+    gap: 40, 
   },
   tabText: {
-    fontSize: 18,
-    fontFamily: fonts.bold, // Added Font
+    fontSize: 20,
+    fontFamily: fonts.bold,
+    paddingBottom: 5, 
   },
   tabActive: {
     color: colors.text,
-    textDecorationLine: 'underline',
+    borderBottomWidth: 3,
+    borderBottomColor: colors.accent, 
   },
   tabInactive: {
-    color: colors.color6,
+    color: '#c4ae9a', 
   },
   divider: {
     height: 1,
@@ -58,186 +79,196 @@ export const detailStyles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  // List Section
+  // --- List Section ---
   listContainer: {
-    paddingHorizontal: 40,
+    paddingHorizontal: 24,
   },
   listItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   checkbox: {
-    width: 20,
-    height: 20,
-    backgroundColor: colors.modalInputBg,
+    width: 22,
+    height: 22,
+    backgroundColor: '#DCD9CD', 
     marginRight: 15,
-    borderRadius: 2,
+    borderRadius: 4,
   },
   checkboxChecked: {
     backgroundColor: colors.text,
   },
   checkboxPlaceholder: {
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     marginRight: 15,
   },
   listItemText: {
-    fontSize: 16,
-    fontFamily: fonts.regular, // Added Font
+    fontSize: 18,
+    fontFamily: fonts.regular,
     color: colors.text,
     flex: 1,
   },
-  newItemInput: {
-    fontSize: 16,
-    fontFamily: fonts.regular, // Added Font
-    color: colors.text,
-    flex: 1,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-    paddingBottom: 5
-  },
+  
+  // --- New Item Input ---
   addItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 15,
     marginBottom: 30,
   },
+  newItemInput: {
+    fontSize: 18,
+    fontFamily: fonts.regularItalic, 
+    color: colors.text,
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.4)', 
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 12,
+  },
 
-  // Icons & Avatars
+  // --- Icons & Avatars ---
   iconGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   urgentIcon: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
   },
   exclamation: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 14,
+    fontFamily: fonts.bold,
   },
   avatarSmall: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.modalInputBg,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#D6CFC4',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 5,
+    // Removed marginRight (gap handles it in iconGroup if needed, but usually list items use margins)
+    // Note: In the main list item, we usually don't use gap because the text expands.
+    // The detailStyles.listItemRow doesn't use gap, so we keep marginRight here if needed, 
+    // BUT items inside iconGroup use gap.
   },
   avatarSmallSelected: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.color6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#A89F91', 
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 5,
   },
   avatarTextSmall: {
-    fontSize: 10,
+    fontSize: 12,
     color: colors.text,
-    fontWeight: 'bold'
+    fontFamily: fonts.bold,
   },
   dashedCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.accent,
     borderStyle: 'dashed',
-    marginRight: 5,
   },
 
-  // Footer
+  // --- Footer ---
   recentlyBoughtLink: {
-    marginTop: 20,
+    marginTop: 40,
     marginBottom: 50,
+    alignSelf: 'flex-start',
   },
   linkText: {
-    color: '#5C6B73',
-    fontSize: 14,
-    fontFamily: fonts.bold, // Added Font
+    color: colors.text,
+    fontSize: 16,
+    fontFamily: fonts.bold,
     textDecorationLine: 'underline',
   },
 
-  // Buy Modal Specifics
+  // --- Buy Modal Specifics ---
   modalContainer: { 
-    width: '80%',
-    backgroundColor: '#FDFBF6',
+    width: '85%',
+    backgroundColor: '#F2EFE9', 
     padding: 25,
-    borderRadius: 15,
+    borderRadius: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   modalTitle: {
-    fontSize: 20,
-    fontFamily: fonts.bold, // Added Font
+    fontSize: 22,
+    fontFamily: fonts.bold,
     color: colors.text,
-    marginBottom: 15,
+    marginBottom: 20,
   },
   priceInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#E0DCD0', 
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
     marginBottom: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.text,
-    width: 100,
+    width: 120,
   },
   currencySymbol: {
     fontSize: 20,
     color: colors.text,
+    fontFamily: fonts.bold,
     marginRight: 5,
   },
   priceInput: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontFamily: fonts.bold,
     color: colors.text,
     width: '100%',
+    padding: 0, 
   },
   sharedByLabel: {
-    fontSize: 12,
-    fontFamily: fonts.regular, // Added Font
-    color: colors.color6,
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: colors.accent, 
     marginBottom: 8,
   },
   sharedByRow: {
     flexDirection: 'row',
-    marginBottom: 20,
+    marginBottom: 25,
   },
   modalActionRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    gap: 12,
   },
   modalCloseBtn: {
-    backgroundColor: colors.text,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    backgroundColor: '#5A6770', 
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
   },
   modalCheckBtn: {
     backgroundColor: colors.accent,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
 
-  // Split Tab
+  // --- Split Tab ---
   splitCenterContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -250,56 +281,56 @@ export const detailStyles = StyleSheet.create({
     marginBottom: 50,
   },
   avatarMedium: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: colors.modalInputBg,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#D6CFC4',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarTextMedium: {
-    fontSize: 16, 
-    fontWeight: 'bold', 
+    fontSize: 18, 
+    fontFamily: fonts.bold, 
     color: colors.text
   },
   arrowContainer: {
-    width: 100,
+    width: 120,
     alignItems: 'center',
-    marginHorizontal: 10,
+    marginHorizontal: 15,
   },
   amountText: {
-    fontSize: 12,
-    marginBottom: 2,
-    fontWeight: 'bold',
+    fontSize: 14,
+    marginBottom: 4,
+    fontFamily: fonts.bold,
     color: colors.text
   },
   arrowLine: {
     width: '100%',
-    height: 1,
+    height: 2,
     backgroundColor: colors.accent,
   },
   arrowHead: {
      position: 'absolute',
      right: 0,
-     bottom: -4,
+     bottom: -5,
      width: 0,
      height: 0,
-     borderTopWidth: 4,
+     borderTopWidth: 6,
      borderTopColor: 'transparent',
-     borderBottomWidth: 4,
+     borderBottomWidth: 6,
      borderBottomColor: 'transparent',
-     borderLeftWidth: 8,
+     borderLeftWidth: 10,
      borderLeftColor: colors.accent,
   },
   settleButton: {
     backgroundColor: colors.accent,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-    borderRadius: 25,
+    paddingVertical: 15,
+    paddingHorizontal: 50,
+    borderRadius: 30,
   },
   settleButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontFamily: fonts.bold, // Added Font
+    fontSize: 18,
+    fontFamily: fonts.bold,
   }
 });
