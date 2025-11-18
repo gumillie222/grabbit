@@ -25,7 +25,6 @@ SplashScreen.preventAutoHideAsync();
 
 const Tab = createBottomTabNavigator();
 
-// 🔴 FIX APPLIED HERE: EventDetail is removed from hideOnScreens
 const getTabBarVisibility = (route) => {
   const routeName = getFocusedRouteNameFromRoute(route);
   const hideOnScreens = []; // Array is now empty
@@ -71,7 +70,7 @@ export default function App() {
                 display: getTabBarVisibility(route), 
               },
               tabBarIcon: ({ color, size }) => {
-                const map = { Home: 'home', Me: 'user', Realtime: 'bolt' };
+                const map = { Home: 'home', Me: 'user-alt', Realtime: 'bolt' };
                 return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
               },
               headerShown: route.name !== 'Home' && route.name !== 'Me',
