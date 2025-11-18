@@ -145,10 +145,9 @@ export default function EventDetailScreen({ route, navigation }) {
     </View>
   );
 
-  // --- TABS RENDER (Now using standard View, not ScrollView) ---
+// --- TABS RENDER ---
   const renderListTab = () => (
-    <View style={detailStyles.listContainer}> {/* CHANGED TO VIEW */}
-      
+    <View style={detailStyles.listContainer}>{/* CHANGED TO VIEW */}
       {/* ACTIVE ITEMS */}
       {activeItems.map((item) => renderItemRow(item, true))}
 
@@ -183,7 +182,7 @@ export default function EventDetailScreen({ route, navigation }) {
         onPress={() => setShowRecent(!showRecent)}
       >
           <Text style={detailStyles.linkText}>
-            Recently Bought ({recentItems.length})
+            {`Recently Bought (${recentItems.length})`}
           </Text>
           {/* THE TRIANGLE VIEW */}
           <View style={[

@@ -19,14 +19,18 @@ import {
 import HomeStackNavigator from './HomeStackNavigator'; 
 import StylesScreen from './StylesScreen';
 import RealtimeDemoScreen from './RealtimeDemoScreen';
+import ProfileScreen from './ProfileScreen';
 
 SplashScreen.preventAutoHideAsync();
 
 const Tab = createBottomTabNavigator();
 
+// 🔴 FIX APPLIED HERE: EventDetail is removed from hideOnScreens
 const getTabBarVisibility = (route) => {
   const routeName = getFocusedRouteNameFromRoute(route);
-  const hideOnScreens = ['EventDetail'];
+  const hideOnScreens = []; // Array is now empty
+  // If you had other full-screen modals you wanted to hide the tab bar on, 
+  // you would list them here, but EventDetail is no longer one of them.
   if (hideOnScreens.includes(routeName)) return 'none'; 
   return 'flex'; 
 };
@@ -63,17 +67,18 @@ export default function App() {
               tabBarInactiveTintColor: '#34495e',
               tabBarStyle: { 
                 backgroundColor: '#e8e5dc',
-                display: getTabBarVisibility(route),
+                // This function now returns 'flex' for EventDetail
+                display: getTabBarVisibility(route), 
               },
               tabBarIcon: ({ color, size }) => {
-                const map = { Home: 'home', Styles: 'palette', Realtime: 'bolt' };
+                const map = { Home: 'home', Me: 'user', Realtime: 'bolt' };
                 return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
               },
-              headerShown: route.name !== 'Home',
+              headerShown: route.name !== 'Home' && route.name !== 'Me',
             })}
           >
             <Tab.Screen name="Home" component={HomeStackNavigator} />
-            <Tab.Screen name="Styles" component={StylesScreen} />
+            <Tab.Screen name="Me" component={ProfileScreen} />
             <Tab.Screen
               name="Realtime"
               children={() => <RealtimeDemoScreen serverUrl={SERVER_URL} room="demo1" />}

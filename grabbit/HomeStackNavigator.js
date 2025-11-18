@@ -14,10 +14,7 @@ export default function HomeStackNavigator() {
         headerShown: false, // Hides the stack's own header
       }}
     >
-      {/* Screen 1: The list of cards */}
       <Stack.Screen name="HomeList" component={HomeScreen} />
-      
-      {/* Screen 2: The detail view */}
       <Stack.Screen name="EventDetail" component={EventDetailScreen} />
     </Stack.Navigator>
   );
