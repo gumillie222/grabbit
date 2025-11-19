@@ -205,6 +205,19 @@ export const homeStyles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: colors.accent,
     marginLeft: 8,
+    flex: 1,
+  },
+  connectionIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginLeft: 8,
+  },
+  connectionIndicatorGreen: {
+    backgroundColor: '#4CAF50',
+  },
+  connectionIndicatorRed: {
+    backgroundColor: '#F44336',
   },
   suggestionsGrid: {
     flexDirection: 'row',
