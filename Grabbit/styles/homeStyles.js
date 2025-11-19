@@ -169,4 +169,81 @@ export const homeStyles = StyleSheet.create({
     textAlign: 'left',
     paddingHorizontal: 20, 
   },
+  
+  // --- Modal Overlay Container ---
+  modalOverlayContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalOverlayWithSuggestions: {
+    justifyContent: 'flex-start',
+    paddingTop: '32%',
+  },
+  // --- AI Suggestions Styles ---
+  suggestionsOuterContainer: {
+    position: 'absolute',
+    top: '62%',
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    zIndex: 1001,
+    backgroundColor: 'transparent',
+    paddingTop: 20,
+    paddingBottom: 20,
+    alignItems: 'center',
+  },
+  suggestionsContainer: {
+    marginBottom: 20,
+  },
+  suggestionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  suggestionsHeaderText: {
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    color: colors.accent,
+    marginLeft: 8,
+  },
+  suggestionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  suggestionItemBlock: {
+    backgroundColor: colors.inputBg,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginRight: 8,
+    marginBottom: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+    alignSelf: 'flex-start',
+  },
+  suggestionItemBlockSelected: {
+    backgroundColor: colors.accent,
+  },
+  suggestionItemText: {
+    fontSize: 16,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  suggestionItemTextSelected: {
+    color: colors.background,
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.placeholder,
+    fontStyle: 'italic',
+  },
 });

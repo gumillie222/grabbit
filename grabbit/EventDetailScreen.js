@@ -22,7 +22,7 @@ const BASE_URL =
     : 'http://10.0.2.2:3000';
 
 export default function EventDetailScreen({ route, navigation }) {
-  const { eventTitle, isNew } = route.params || { eventTitle: "Unit 602", isNew: false };
+  const { eventTitle, isNew, initialItems } = route.params || { eventTitle: "Unit 602", isNew: false, initialItems: null };
 
   const [activeTab, setActiveTab] = useState('List'); 
   
@@ -36,10 +36,12 @@ export default function EventDetailScreen({ route, navigation }) {
   const [priceInput, setPriceInput] = useState('');
   const [showRecent, setShowRecent] = useState(true); 
 
-  // If this is a new event, start with an empty list.
+  // If this is a new event, start with an empty list or initial items from suggestions.
   // Otherwise, use default template items.
   const [items, setItems] = useState(
-    isNew
+    initialItems 
+      ? initialItems
+      : isNew
       ? []
       : [
           { id: 1, name: 'dish soap',  urgent: true,  claimedBy: 'Me', bought: false, price: null },
