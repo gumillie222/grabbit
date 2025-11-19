@@ -3,32 +3,30 @@ import { colors, fonts } from './styles';
 
 export const detailStyles = StyleSheet.create({
   // --- Header Area ---
-  header: {
+  headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
     paddingTop: 20,
+    marginBottom: 5,
   },
-  backButton: {
-    padding: 5,
-    marginTop: 5,
+
+  headerSide: {
+    width: 32, // keeps left/right edges symmetric
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  titleContainer: {
-    alignItems: 'flex-end',
-    paddingLeft: 40, // Added margin/padding from the left side
+
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
+
   titleText: {
-    fontSize: 32,
+    fontSize: 30,
     fontFamily: fonts.bold,
     color: colors.accent,
-    lineHeight: 34,
-  },
-  subTitleText: {
-    fontSize: 32,
-    fontFamily: fonts.bold,
-    color: colors.accent,
-    lineHeight: 34,
   },
   
   // --- Participants ---
@@ -41,6 +39,7 @@ export const detailStyles = StyleSheet.create({
     marginBottom: 30,
     gap: 15, // Creates even space between all icons (Me, A, +)
   },
+
   addParticipant: {
     // Removed marginLeft (gap handles it now)
     width: 30,
@@ -347,7 +346,8 @@ export const detailStyles = StyleSheet.create({
 
   // AI modal container
   aiModalContainer: {
-    width: '90%',
+    width: 360,
+    maxHeight: '50%',
     backgroundColor: '#F2EFE9',
     padding: 20,
     borderRadius: 20,
@@ -399,6 +399,9 @@ export const detailStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 6,
+  },
+  aiSuggestionsScroll: {
+    marginTop: 8,
   },
   aiCheckbox: {
     width: 18,

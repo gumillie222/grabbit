@@ -410,22 +410,20 @@ export default function EventDetailScreen({ route, navigation }) {
       />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={detailStyles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={detailStyles.backButton}
-          >
-            <FontAwesome5
-              name="angle-double-left"
-              size={24}
-              color={colors.color6}
-            />
-          </TouchableOpacity>
-        </View>
+      <View style={detailStyles.headerRow}>
+        {/* LEFT: Back Button */}
+        <TouchableOpacity onPress={() => navigation.goBack()} style={detailStyles.headerSide}>
+          <FontAwesome5 name="chevron-left" size={22} color={colors.text} />
+        </TouchableOpacity>
 
-        <View style={detailStyles.titleContainer}>
+        {/* CENTER: Title */}
+        <View style={detailStyles.headerCenter}>
           <Text style={detailStyles.titleText}>{eventTitle}</Text>
         </View>
+
+        {/* RIGHT: Placeholder to balance spacing */}
+        <View style={detailStyles.headerSide} />
+      </View>
 
         <View style={detailStyles.participantsRow}>
           <FontAwesome5
@@ -587,33 +585,37 @@ export default function EventDetailScreen({ route, navigation }) {
                     </Text>
                   </TouchableOpacity>
 
-                  {suggestions.map((s) => (
-                    <TouchableOpacity
-                      key={s.id}
-                      style={detailStyles.aiSuggestionRow}
-                      onPress={() => toggleSuggestion(s.id)}
-                    >
-                      <View
-                        style={[
-                          detailStyles.aiCheckbox,
-                          s.selected && detailStyles.aiCheckboxSelected,
-                        ]}
-                      />
-                      <Text style={detailStyles.aiSuggestionText}>{s.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-
+                  {/* Suggestions + footer scroll INSIDE the card */}
                   {suggestions.length > 0 && (
-                    <View style={detailStyles.aiModalFooterRow}>
-                      <TouchableOpacity
-                        style={detailStyles.aiAddButton}
-                        onPress={addSelectedSuggestions}
-                      >
-                        <Text style={detailStyles.aiAddButtonText}>
-                          Add selected to list
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
+                    <ScrollView
+                      style={detailStyles.aiSuggestionsScroll}
+                      contentContainerStyle={{ paddingBottom: 16 }}
+                    >
+                      {suggestions.map((s) => (
+                        <TouchableOpacity
+                          key={s.id}
+                          style={detailStyles.aiSuggestionRow}
+                          onPress={() => toggleSuggestion(s.id)}
+                        >
+                          <View
+                            style={[
+                              detailStyles.aiCheckbox,
+                              s.selected && detailStyles.aiCheckboxSelected,
+                            ]}
+                          />
+                          <Text style={detailStyles.aiSuggestionText}>{s.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+
+                      <View style={detailStyles.aiModalFooterRow}>
+                        <TouchableOpacity
+                          style={detailStyles.aiAddButton}
+                          onPress={addSelectedSuggestions}
+                        >
+                          <Text style={detailStyles.aiAddButtonText}>Add selected to list</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </ScrollView>
                   )}
                 </View>
               </TouchableWithoutFeedback>
