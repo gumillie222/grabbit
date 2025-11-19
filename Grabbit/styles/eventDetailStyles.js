@@ -24,7 +24,6 @@ export const detailStyles = StyleSheet.create({
   },
 
   titleText: {
-<<<<<<< HEAD
     fontSize: 32,
     fontFamily: fonts.bold,
     color: colors.accent,
@@ -33,11 +32,9 @@ export const detailStyles = StyleSheet.create({
   },
   subTitleText: {
     fontSize: 32,
-=======
-    fontSize: 30,
->>>>>>> 039bcffc79120df3bec179a4108102bc7eac0efc
     fontFamily: fonts.bold,
     color: colors.accent,
+    lineHeight: 34,
   },
   
   // --- Participants ---
