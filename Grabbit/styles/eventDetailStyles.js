@@ -3,22 +3,28 @@ import { colors, fonts } from './styles';
 
 export const detailStyles = StyleSheet.create({
   // --- Header Area ---
-  header: {
+  headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
     paddingTop: 20,
+    marginBottom: 5,
   },
-  backButton: {
-    padding: 5,
-    marginTop: 5,
+
+  headerSide: {
+    width: 32, // keeps left/right edges symmetric
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  titleContainer: {
-    alignItems: 'flex-end',
-    paddingLeft: 40, // Added margin/padding from the left side
+
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
+
   titleText: {
+<<<<<<< HEAD
     fontSize: 32,
     fontFamily: fonts.bold,
     color: colors.accent,
@@ -27,9 +33,11 @@ export const detailStyles = StyleSheet.create({
   },
   subTitleText: {
     fontSize: 32,
+=======
+    fontSize: 30,
+>>>>>>> 039bcffc79120df3bec179a4108102bc7eac0efc
     fontFamily: fonts.bold,
     color: colors.accent,
-    lineHeight: 34,
   },
   
   // --- Participants ---
@@ -42,6 +50,7 @@ export const detailStyles = StyleSheet.create({
     marginBottom: 30,
     gap: 15, // Creates even space between all icons (Me, A, +)
   },
+
   addParticipant: {
     // Removed marginLeft (gap handles it now)
     width: 30,
@@ -359,7 +368,8 @@ export const detailStyles = StyleSheet.create({
 
   // AI modal container
   aiModalContainer: {
-    width: '90%',
+    width: 360,
+    maxHeight: '50%',
     backgroundColor: '#F2EFE9',
     padding: 20,
     borderRadius: 20,
@@ -412,6 +422,9 @@ export const detailStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
   },
+  aiSuggestionsScroll: {
+    marginTop: 8,
+  },
   aiCheckbox: {
     width: 18,
     height: 18,
@@ -446,6 +459,26 @@ export const detailStyles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
     color: 'white',
+  },
+  aiCloseButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#5A6770',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  aiIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
   },
 
   // edit item modal
