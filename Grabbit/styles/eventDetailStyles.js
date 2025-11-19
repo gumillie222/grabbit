@@ -435,6 +435,26 @@ export const detailStyles = StyleSheet.create({
     fontSize: 14,
     color: 'white',
   },
+  aiCloseButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#5A6770',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  aiIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
 
   // edit item modal
   editModalContainer: {

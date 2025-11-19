@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import Constants from 'expo-constants'; 
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -59,6 +60,13 @@ export default function EventDetailScreen({ route, navigation }) {
   const [description, setDescription] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const closeAiModal = () => {
+    setAiModalVisible(false);
+    setIsGenerating(false);
+    // optional: clear fields between uses
+    // setDescription('');
+    // setSuggestions([]);
+  };
 
   // ---- Edit item modal ----
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -292,13 +300,14 @@ export default function EventDetailScreen({ route, navigation }) {
           </>
         )}
 
-        {/* Avatar / claimed indicator */}
-        {item.claimedBy === 'Me' ? (
+        {/* Avatar / claimed indicator 
+            - Only show on Recently Bought list
+            - No extra circle on active list
+        */}
+        {!isActiveList && item.claimedBy === 'Me' && (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>Me</Text>
           </View>
-        ) : (
-          <View style={detailStyles.dashedCircle} />
         )}
       </View>
     </View>
@@ -321,6 +330,7 @@ export default function EventDetailScreen({ route, navigation }) {
           onSubmitEditing={handleAddItem}
         />
         <View style={[detailStyles.iconGroup, { marginLeft: 10 }]}>
+          {/* Urgent toggle */}
           <TouchableOpacity onPress={() => setNewItemUrgent(!newItemUrgent)}>
             {newItemUrgent ? (
               <View style={detailStyles.urgentIcon}>
@@ -335,18 +345,16 @@ export default function EventDetailScreen({ route, navigation }) {
               />
             )}
           </TouchableOpacity>
-          <View style={{ width: 28 }} />
+
+          {/* AI icon button */}
+          <TouchableOpacity
+            style={detailStyles.aiIconButton}
+            onPress={() => setAiModalVisible(true)}
+          >
+            <FontAwesome5 name="magic" size={14} color={colors.text} />
+          </TouchableOpacity>
         </View>
       </View>
-
-      {/* AI SUGGESTIONS trigger (now opens modal) */}
-      <TouchableOpacity
-        style={detailStyles.recentlyBoughtLink}
-        onPress={() => setAiModalVisible(true)}
-      >
-        <Text style={detailStyles.linkText}>AI Suggestions</Text>
-        <View style={[styles.triangleBase, styles.triangleRight]} />
-      </TouchableOpacity>
 
       {/* RECENTLY BOUGHT TOGGLE */}
       <TouchableOpacity
@@ -539,75 +547,81 @@ export default function EventDetailScreen({ route, navigation }) {
         animationType="fade"
         transparent={true}
         visible={aiModalVisible}
-        onRequestClose={() => setAiModalVisible(false)}
+        onRequestClose={closeAiModal}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={globalStyles.modalOverlay}
-        >
-          <View style={detailStyles.aiModalContainer}>
-            <Text style={detailStyles.aiTitle}>Describe your gathering</Text>
-
-            <TextInput
-              style={detailStyles.aiDescriptionInput}
-              placeholder="e.g. Hotpot birthday for 6 friends, budget $80"
-              placeholderTextColor={colors.modalPlaceholder}
-              multiline
-              value={description}
-              onChangeText={setDescription}
-            />
-
-            <TouchableOpacity
-              style={detailStyles.aiButton}
-              onPress={handleGenerateSuggestions}
-              disabled={isGenerating}
+        <TouchableWithoutFeedback onPress={closeAiModal}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
             >
-              <FontAwesome5 name="magic" size={14} color="#fff" />
-              <Text style={detailStyles.aiButtonText}>
-                {isGenerating ? 'Generating…' : 'Generate suggestions'}
-              </Text>
-            </TouchableOpacity>
+              <TouchableWithoutFeedback onPress={() => { /* swallow taps inside card */ }}>
+                <View style={detailStyles.aiModalContainer}>
+                  {/* top-right close button */}
+                  <TouchableOpacity
+                    style={detailStyles.aiCloseButton}
+                    onPress={closeAiModal}
+                  >
+                    <FontAwesome5 name="times" size={16} color="#fff" />
+                  </TouchableOpacity>
 
-            <Text style={detailStyles.aiHelperText}>
-              This simulates an AI model that uses past trips + your description
-              to propose items to start your list.
-            </Text>
+                  <Text style={detailStyles.aiTitle}>Describe your gathering</Text>
 
-            {suggestions.map((s) => (
-              <TouchableOpacity
-                key={s.id}
-                style={detailStyles.aiSuggestionRow}
-                onPress={() => toggleSuggestion(s.id)}
-              >
-                <View
-                  style={[
-                    detailStyles.aiCheckbox,
-                    s.selected && detailStyles.aiCheckboxSelected,
-                  ]}
-                />
-                <Text style={detailStyles.aiSuggestionText}>{s.name}</Text>
-              </TouchableOpacity>
-            ))}
+                  <TextInput
+                    style={detailStyles.aiDescriptionInput}
+                    placeholder="e.g. Hotpot birthday for 6 friends, budget $80"
+                    placeholderTextColor={colors.modalPlaceholder}
+                    multiline
+                    value={description}
+                    onChangeText={setDescription}
+                  />
 
-            <View style={detailStyles.aiModalFooterRow}>
-              <TouchableOpacity
-                style={detailStyles.modalCloseBtn}
-                onPress={() => setAiModalVisible(false)}
-              >
-                <FontAwesome5 name="times" size={16} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={detailStyles.aiAddButton}
-                onPress={addSelectedSuggestions}
-              >
-                <Text style={detailStyles.aiAddButtonText}>
-                  Add selected to list
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <TouchableOpacity
+                    style={detailStyles.aiButton}
+                    onPress={handleGenerateSuggestions}
+                    disabled={isGenerating}
+                  >
+                    <FontAwesome5 name="magic" size={14} color="#fff" />
+                    <Text style={detailStyles.aiButtonText}>
+                      {isGenerating ? 'Generating…' : 'Generate suggestions'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {suggestions.map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={detailStyles.aiSuggestionRow}
+                      onPress={() => toggleSuggestion(s.id)}
+                    >
+                      <View
+                        style={[
+                          detailStyles.aiCheckbox,
+                          s.selected && detailStyles.aiCheckboxSelected,
+                        ]}
+                      />
+                      <Text style={detailStyles.aiSuggestionText}>{s.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {suggestions.length > 0 && (
+                    <View style={detailStyles.aiModalFooterRow}>
+                      <TouchableOpacity
+                        style={detailStyles.aiAddButton}
+                        onPress={addSelectedSuggestions}
+                      >
+                        <Text style={detailStyles.aiAddButtonText}>
+                          Add selected to list
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </View>
-        </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </Modal>
+
 
       {/* ---- EDIT ITEM MODAL ---- */}
       <Modal
