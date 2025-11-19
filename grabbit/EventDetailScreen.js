@@ -49,11 +49,19 @@ export default function EventDetailScreen({ route, navigation }) {
         ]
   );
 
-  // ----- AI suggestions -----
+  const activeItems = items.filter(item => !item.bought);
+  const recentItems = items.filter(item => item.bought);
+
+  // ---- AI suggestions ----
+  const [aiModalVisible, setAiModalVisible] = useState(false);
   const [description, setDescription] = useState('');
   const [suggestions, setSuggestions] = useState([]);
-  const [showAISuggestions, setShowAISuggestions] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // ---- Edit item modal ----
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editText, setEditText] = useState('');
 
   // --- Logic ---
 
@@ -80,17 +88,36 @@ export default function EventDetailScreen({ route, navigation }) {
     setNewItemUrgent(false); 
   };
 
-  const openBuyModal = (item) => {
-    setSelectedItem(item);
-    setBuyModalVisible(true);
+  // ---- Claim / un-claim via checkbox ----
+  const handleToggleBought = (item) => {
+    if (!item.bought) {
+      // going from unbought -> bought: open price modal
+      setSelectedItem(item);
+      setPriceInput('');
+      setBuyModalVisible(true);
+    } else {
+      // undo buy: move back to active list
+      setItems((current) =>
+        current.map((it) =>
+          it.id === item.id
+            ? { ...it, bought: false, price: null, claimedBy: null }
+            : it
+        )
+      );
+    }
   };
 
   const handleBuyConfirm = () => {
     if (selectedItem) {
-      setItems(currentItems =>
-        currentItems.map(item =>
-          item.id === selectedItem.id 
-            ? { ...item, bought: true, price: priceInput } 
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.id === selectedItem.id
+            ? {
+                ...item,
+                bought: true,
+                price: priceInput,
+                claimedBy: 'Me', // show profile bubble
+              }
             : item
         )
       );
@@ -100,8 +127,32 @@ export default function EventDetailScreen({ route, navigation }) {
     setSelectedItem(null);
   };
 
-  const activeItems = items.filter(item => !item.bought);
-  const recentItems = items.filter(item => item.bought);
+  // ---- Edit / delete item ----
+  const openEditModal = (item) => {
+    setEditingItem(item);
+    setEditText(item.name);
+    setEditModalVisible(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingItem) return;
+    setItems((current) =>
+      current.map((it) =>
+        it.id === editingItem.id ? { ...it, name: editText } : it
+      )
+    );
+    setEditModalVisible(false);
+    setEditingItem(null);
+    setEditText('');
+  };
+
+  const handleDeleteItem = () => {
+    if (!editingItem) return;
+    setItems((current) => current.filter((it) => it.id !== editingItem.id));
+    setEditModalVisible(false);
+    setEditingItem(null);
+    setEditText('');
+  };
 
   const handleGenerateSuggestions = async () => {
     if (!description.trim()) return;  // don't call if empty
@@ -162,72 +213,97 @@ export default function EventDetailScreen({ route, navigation }) {
 
     // reset selection & collapse list
     setSuggestions((prev) => prev.map((s) => ({ ...s, selected: false })));
-    setShowAISuggestions(false);
+    setAiModalVisible(false);
   };
 
   // --- Render Helpers ---
 
   const renderItemRow = (item, isActiveList) => (
     <View key={item.id} style={detailStyles.listItemRow}>
-      
-      {/* Checkbox & Name */}
-      <TouchableOpacity 
-        style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} 
-        onPress={() => isActiveList && openBuyModal(item)}
-        disabled={!isActiveList}
+      {/* Checkbox (claim / undo) */}
+      <TouchableOpacity
+        onPress={() => handleToggleBought(item)}
+        style={{ marginRight: 15 }}
       >
-        <View style={[detailStyles.checkbox, item.bought && detailStyles.checkboxChecked]} />
-        <Text style={[
-          detailStyles.listItemText, 
-          item.bought && { textDecorationLine: 'line-through', color: '#aaa' }
-        ]}>
-          {item.name}
-        </Text>
+        <View
+          style={[
+            detailStyles.checkbox,
+            item.bought && detailStyles.checkboxChecked,
+          ]}
+        />
       </TouchableOpacity>
 
-      {/* Right Side: Urgency OR Price + Avatar */}
+      {/* Name */}
+      <View style={{ flex: 1 }}>
+        <Text
+          style={[
+            detailStyles.listItemText,
+            item.bought && {
+              textDecorationLine: 'line-through',
+              color: '#aaa',
+            },
+          ]}
+        >
+          {item.name}
+        </Text>
+      </View>
+
+      {/* Right-side icons */}
       <View style={detailStyles.iconGroup}>
-        
-        {/* SHOW PRICE IF BOUGHT */}
+        {/* Price for recent items */}
         {!isActiveList && item.price && (
-           <Text style={{ 
-             marginRight: 10, 
-             fontFamily: fonts.bold, 
-             color: colors.text,
-             fontSize: 16
-           }}>
-             ${item.price}
-           </Text>
+          <Text
+            style={{
+              marginRight: 10,
+              fontFamily: fonts.bold,
+              color: colors.text,
+              fontSize: 16,
+            }}
+          >
+            ${item.price}
+          </Text>
         )}
 
-        {/* SHOW URGENCY ONLY IF ACTIVE LIST */}
+        {/* Urgency + Edit only on active list */}
         {isActiveList && (
-          <TouchableOpacity onPress={() => toggleItemUrgency(item.id)}>
-            {item.urgent ? (
-              <View style={detailStyles.urgentIcon}>
-                <Text style={detailStyles.exclamation}>!</Text>
+          <>
+            <TouchableOpacity onPress={() => toggleItemUrgency(item.id)}>
+              {item.urgent ? (
+                <View style={detailStyles.urgentIcon}>
+                  <Text style={detailStyles.exclamation}>!</Text>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    detailStyles.dashedCircle,
+                    { borderColor: '#ccc', borderStyle: 'solid' },
+                  ]}
+                />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => openEditModal(item)}>
+              <View style={detailStyles.editIconCircle}>
+                <FontAwesome5 name="pen" size={12} color={colors.text} />
               </View>
-            ) : (
-              <View style={[detailStyles.dashedCircle, { borderColor: '#ccc', borderStyle: 'solid' }]} />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </>
         )}
 
-        {/* Avatar */}
+        {/* Avatar / claimed indicator */}
         {item.claimedBy === 'Me' ? (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>Me</Text>
           </View>
         ) : (
-           <View style={detailStyles.dashedCircle} />
+          <View style={detailStyles.dashedCircle} />
         )}
       </View>
     </View>
   );
 
-// --- TABS RENDER ---
   const renderListTab = () => (
-    <View style={detailStyles.listContainer}>{/* CHANGED TO VIEW */}
+    <View style={detailStyles.listContainer}>
       {/* ACTIVE ITEMS */}
       {activeItems.map((item) => renderItemRow(item, true))}
 
@@ -261,68 +337,263 @@ export default function EventDetailScreen({ route, navigation }) {
         </View>
       </View>
 
-      {/* AI SUGGESTIONS TOGGLE */}
+      {/* AI SUGGESTIONS trigger (now opens modal) */}
       <TouchableOpacity
         style={detailStyles.recentlyBoughtLink}
-        onPress={() => setShowAISuggestions(!showAISuggestions)}
+        onPress={() => setAiModalVisible(true)}
       >
         <Text style={detailStyles.linkText}>AI Suggestions</Text>
+        <View style={[styles.triangleBase, styles.triangleRight]} />
+      </TouchableOpacity>
+
+      {/* RECENTLY BOUGHT TOGGLE */}
+      <TouchableOpacity
+        style={detailStyles.recentlyBoughtLink}
+        onPress={() => setShowRecent(!showRecent)}
+      >
+        <Text style={detailStyles.linkText}>
+          {`Recently Bought (${recentItems.length})`}
+        </Text>
         <View
           style={[
             styles.triangleBase,
-            showAISuggestions ? styles.triangleDown : styles.triangleRight,
+            showRecent ? styles.triangleDown : styles.triangleRight,
           ]}
         />
       </TouchableOpacity>
 
-      {/* AI CARD */}
-      {showAISuggestions && (
-        <View style={detailStyles.aiSuggestionContainer}>
-          <Text style={detailStyles.aiTitle}>Describe your gathering</Text>
+      {showRecent && recentItems.map((item) => renderItemRow(item, false))}
 
-          <TextInput
-            style={detailStyles.aiDescriptionInput}
-            placeholder="e.g. Hotpot birthday for 6 friends, budget $80"
-            placeholderTextColor={colors.modalPlaceholder}
-            multiline
-            value={description}
-            onChangeText={setDescription}
-          />
+      <View style={{ height: 50 }} />
+    </View>
+  );
 
+  const renderSplitTab = () => (
+    <View style={detailStyles.splitCenterContainer}>
+      <View style={detailStyles.splitRow}>
+        <View style={detailStyles.avatarMedium}>
+          <Text style={detailStyles.avatarTextMedium}>A</Text>
+        </View>
+        <View style={detailStyles.arrowContainer}>
+          <Text style={detailStyles.amountText}>$1.44</Text>
+          <View style={detailStyles.arrowLine} />
+          <View style={detailStyles.arrowHead} />
+        </View>
+        <View style={detailStyles.avatarMedium}>
+          <Text style={detailStyles.avatarTextMedium}>Me</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={detailStyles.settleButton}>
+        <Text style={detailStyles.settleButtonText}>Settle</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  return (
+    <View style={globalStyles.container}>
+      {/* Status bar spacer */}
+      <View
+        style={{
+          height: Constants.statusBarHeight,
+          backgroundColor: colors.background,
+        }}
+      />
+
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={detailStyles.header}>
           <TouchableOpacity
-            style={detailStyles.aiButton}
-            onPress={handleGenerateSuggestions}
-            disabled={isGenerating}
+            onPress={() => navigation.goBack()}
+            style={detailStyles.backButton}
           >
-            <FontAwesome5 name="magic" size={14} color="#fff" />
-            <Text style={detailStyles.aiButtonText}>
-              {isGenerating ? 'Generating…' : 'Generate suggestions'}
+            <FontAwesome5
+              name="angle-double-left"
+              size={24}
+              color={colors.color6}
+            />
+          </TouchableOpacity>
+        </View>
+
+        <View style={detailStyles.titleContainer}>
+          <Text style={detailStyles.titleText}>{eventTitle}</Text>
+        </View>
+
+        <View style={detailStyles.participantsRow}>
+          <FontAwesome5
+            name="users"
+            size={16}
+            color={colors.text}
+            style={{ marginRight: 8 }}
+          />
+          <View style={detailStyles.avatarSmallSelected}>
+            <Text style={detailStyles.avatarTextSmall}>Me</Text>
+          </View>
+          {!isNew && (
+            <View style={detailStyles.avatarSmall}>
+              <Text style={detailStyles.avatarTextSmall}>A</Text>
+            </View>
+          )}
+          <TouchableOpacity style={detailStyles.addParticipant}>
+            <FontAwesome5 name="plus" size={10} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={detailStyles.tabContainer}>
+          <TouchableOpacity onPress={() => setActiveTab('List')}>
+            <Text
+              style={[
+                detailStyles.tabText,
+                activeTab === 'List'
+                  ? detailStyles.tabActive
+                  : detailStyles.tabInactive,
+              ]}
+            >
+              The List.
             </Text>
           </TouchableOpacity>
 
-          <Text style={detailStyles.aiHelperText}>
-            This simulates an AI model that uses past trips + your description to
-            propose items to start your list.
-          </Text>
+          <TouchableOpacity
+            onPress={() => setActiveTab('Split')}
+            style={{ marginLeft: 20 }}
+          >
+            <Text
+              style={[
+                detailStyles.tabText,
+                activeTab === 'Split'
+                  ? detailStyles.tabActive
+                  : detailStyles.tabInactive,
+              ]}
+            >
+              The Split.
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <View style={detailStyles.divider} />
 
-          {suggestions.length > 0 && (
-            <>
-              {suggestions.map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={detailStyles.aiSuggestionRow}
-                  onPress={() => toggleSuggestion(s.id)}
-                >
-                  <View
-                    style={[
-                      detailStyles.aiCheckbox,
-                      s.selected && detailStyles.aiCheckboxSelected,
-                    ]}
-                  />
-                  <Text style={detailStyles.aiSuggestionText}>{s.name}</Text>
-                </TouchableOpacity>
-              ))}
+        {activeTab === 'List' ? renderListTab() : renderSplitTab()}
+      </ScrollView>
 
+      {/* ---- BUY MODAL ---- */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={buyModalVisible}
+        onRequestClose={() => setBuyModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={globalStyles.modalOverlay}
+        >
+          <View style={detailStyles.modalContainer}>
+            <Text style={detailStyles.modalTitle}>
+              Buying: {selectedItem?.name}
+            </Text>
+
+            <View style={detailStyles.priceInputRow}>
+              <Text style={detailStyles.currencySymbol}>$</Text>
+              <TextInput
+                style={detailStyles.priceInput}
+                placeholder="0.00"
+                keyboardType="numeric"
+                value={priceInput}
+                onChangeText={setPriceInput}
+                autoFocus={true}
+                placeholderTextColor={colors.modalPlaceholder}
+              />
+            </View>
+
+            <Text style={detailStyles.sharedByLabel}>shared by</Text>
+
+            <View style={detailStyles.sharedByRow}>
+              <View
+                style={[detailStyles.avatarSmallSelected, { marginRight: 5 }]}
+              >
+                <Text style={detailStyles.avatarTextSmall}>Me</Text>
+              </View>
+              <View style={detailStyles.avatarSmall}>
+                <Text style={detailStyles.avatarTextSmall}>A</Text>
+              </View>
+            </View>
+
+            <View style={detailStyles.modalActionRow}>
+              <TouchableOpacity
+                onPress={() => setBuyModalVisible(false)}
+                style={detailStyles.modalCloseBtn}
+              >
+                <FontAwesome5 name="times" size={16} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleBuyConfirm}
+                style={detailStyles.modalCheckBtn}
+              >
+                <FontAwesome5 name="check" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ---- AI SUGGESTION MODAL ---- */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={aiModalVisible}
+        onRequestClose={() => setAiModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={globalStyles.modalOverlay}
+        >
+          <View style={detailStyles.aiModalContainer}>
+            <Text style={detailStyles.aiTitle}>Describe your gathering</Text>
+
+            <TextInput
+              style={detailStyles.aiDescriptionInput}
+              placeholder="e.g. Hotpot birthday for 6 friends, budget $80"
+              placeholderTextColor={colors.modalPlaceholder}
+              multiline
+              value={description}
+              onChangeText={setDescription}
+            />
+
+            <TouchableOpacity
+              style={detailStyles.aiButton}
+              onPress={handleGenerateSuggestions}
+              disabled={isGenerating}
+            >
+              <FontAwesome5 name="magic" size={14} color="#fff" />
+              <Text style={detailStyles.aiButtonText}>
+                {isGenerating ? 'Generating…' : 'Generate suggestions'}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={detailStyles.aiHelperText}>
+              This simulates an AI model that uses past trips + your description
+              to propose items to start your list.
+            </Text>
+
+            {suggestions.map((s) => (
+              <TouchableOpacity
+                key={s.id}
+                style={detailStyles.aiSuggestionRow}
+                onPress={() => toggleSuggestion(s.id)}
+              >
+                <View
+                  style={[
+                    detailStyles.aiCheckbox,
+                    s.selected && detailStyles.aiCheckboxSelected,
+                  ]}
+                />
+                <Text style={detailStyles.aiSuggestionText}>{s.name}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <View style={detailStyles.aiModalFooterRow}>
+              <TouchableOpacity
+                style={detailStyles.modalCloseBtn}
+                onPress={() => setAiModalVisible(false)}
+              >
+                <FontAwesome5 name="times" size={16} color="#fff" />
+              </TouchableOpacity>
               <TouchableOpacity
                 style={detailStyles.aiAddButton}
                 onPress={addSelectedSuggestions}
@@ -331,156 +602,46 @@ export default function EventDetailScreen({ route, navigation }) {
                   Add selected to list
                 </Text>
               </TouchableOpacity>
-            </>
-          )}
-        </View>
-      )}
-
-      {/* RECENTLY BOUGHT TOGGLE */}
-      <TouchableOpacity 
-        style={detailStyles.recentlyBoughtLink}
-        onPress={() => setShowRecent(!showRecent)}
-      >
-          <Text style={detailStyles.linkText}>
-            {`Recently Bought (${recentItems.length})`}
-          </Text>
-          {/* THE TRIANGLE VIEW */}
-          <View style={[
-             styles.triangleBase, 
-             showRecent ? styles.triangleDown : styles.triangleRight 
-          ]} />
-      </TouchableOpacity>
-
-      {showRecent && recentItems.map((item) => renderItemRow(item, false))}
-
-      <View style={{ height: 50 }} /> 
-    </View>
-  );
-
-  const renderSplitTab = () => (
-    <View style={detailStyles.splitCenterContainer}>
-       <View style={detailStyles.splitRow}>
-          <View style={detailStyles.avatarMedium}>
-            <Text style={detailStyles.avatarTextMedium}>A</Text>
-          </View>
-          <View style={detailStyles.arrowContainer}>
-             <Text style={detailStyles.amountText}>$1.44</Text>
-             <View style={detailStyles.arrowLine} />
-             <View style={detailStyles.arrowHead} />
-          </View>
-          <View style={detailStyles.avatarMedium}>
-            <Text style={detailStyles.avatarTextMedium}>Me</Text>
-          </View>
-       </View>
-       <TouchableOpacity style={detailStyles.settleButton}>
-         <Text style={detailStyles.settleButtonText}>Settle</Text>
-       </TouchableOpacity>
-    </View>
-  );
-
-  return (
-    <View style={globalStyles.container}>
-      
-      {/* 1. Fixed Spacer for Status Bar */}
-      <View style={{ height: Constants.statusBarHeight, backgroundColor: colors.background }} />
-
-      {/* 2. Main ScrollView wraps EVERYTHING else */}
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-      
-        <View style={detailStyles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={detailStyles.backButton}>
-            <FontAwesome5 name="angle-double-left" size={24} color={colors.color6} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={detailStyles.titleContainer}>
-           <Text style={detailStyles.titleText}>{eventTitle}</Text>
-        </View>
-
-        <View style={detailStyles.participantsRow}>
-          <FontAwesome5 name="users" size={16} color={colors.text} style={{marginRight: 8}} />
-          <View style={detailStyles.avatarSmallSelected}>
-            <Text style={detailStyles.avatarTextSmall}>Me</Text>
-          </View>
-
-          {!isNew && (
-            <View style={detailStyles.avatarSmall}>
-              <Text style={detailStyles.avatarTextSmall}>A</Text>
             </View>
-          )}
-
-          <TouchableOpacity style={detailStyles.addParticipant}>
-            <FontAwesome5 name="plus" size={10} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={detailStyles.tabContainer}>
-          <TouchableOpacity onPress={() => setActiveTab('List')}>
-            <Text style={[detailStyles.tabText, activeTab === 'List' ? detailStyles.tabActive : detailStyles.tabInactive]}>
-              The List.
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => setActiveTab('Split')} style={{marginLeft: 20}}>
-            <Text style={[detailStyles.tabText, activeTab === 'Split' ? detailStyles.tabActive : detailStyles.tabInactive]}>
-              The Split.
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <View style={detailStyles.divider} />
-
-        {activeTab === 'List' ? renderListTab() : renderSplitTab()}
-        
-      </ScrollView>
-
-      {/* Modal remains outside ScrollView */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={buyModalVisible}
-        onRequestClose={() => setBuyModalVisible(false)}
-      >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={globalStyles.modalOverlay} 
-        >
-          <View style={detailStyles.modalContainer}> 
-             <Text style={detailStyles.modalTitle}>
-               Buying: {selectedItem?.name}
-             </Text>
-             
-             <View style={detailStyles.priceInputRow}>
-               <Text style={detailStyles.currencySymbol}>$</Text>
-               <TextInput 
-                 style={detailStyles.priceInput}
-                 placeholder="0.00"
-                 keyboardType="numeric"
-                 value={priceInput}
-                 onChangeText={setPriceInput}
-                 autoFocus={true}
-                 placeholderTextColor={colors.modalPlaceholder}
-               />
-             </View>
-
-             <Text style={detailStyles.sharedByLabel}>shared by</Text>
-             
-             <View style={detailStyles.sharedByRow}>
-               <View style={[detailStyles.avatarSmallSelected, {marginRight:5}]}><Text style={detailStyles.avatarTextSmall}>Me</Text></View>
-               <View style={detailStyles.avatarSmall}><Text style={detailStyles.avatarTextSmall}>A</Text></View>
-             </View>
-
-             <View style={detailStyles.modalActionRow}>
-                <TouchableOpacity onPress={() => setBuyModalVisible(false)} style={detailStyles.modalCloseBtn}>
-                   <FontAwesome5 name="times" size={16} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleBuyConfirm} style={detailStyles.modalCheckBtn}>
-                   <FontAwesome5 name="check" size={16} color="#fff" />
-                </TouchableOpacity>
-             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ---- EDIT ITEM MODAL ---- */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={editModalVisible}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={globalStyles.modalOverlay}
+        >
+          <View style={detailStyles.editModalContainer}>
+            <Text style={detailStyles.modalTitle}>Edit item</Text>
+            <TextInput
+              style={detailStyles.aiDescriptionInput}
+              value={editText}
+              onChangeText={setEditText}
+            />
+            <View style={detailStyles.editModalActions}>
+              <TouchableOpacity
+                style={detailStyles.modalCloseBtn}
+                onPress={handleDeleteItem}
+              >
+                <FontAwesome5 name="trash" size={16} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={detailStyles.modalCheckBtn}
+                onPress={handleSaveEdit}
+              >
+                <FontAwesome5 name="check" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -491,7 +652,7 @@ const styles = {
     height: 0,
     backgroundColor: 'transparent',
     borderStyle: 'solid',
-    marginLeft: 10, 
+    marginLeft: 10,
   },
   triangleDown: {
     borderTopWidth: 8,

@@ -335,17 +335,27 @@ export const detailStyles = StyleSheet.create({
   },
 
   // --- NEW: AI SUGGESTION LIST STYLES ---
-  aiSuggestionContainer: {
-    marginTop: 10,
-    marginBottom: 30,
-    padding: 16,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+  // small circle for edit icon
+  editIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // AI modal container
+  aiModalContainer: {
+    width: '90%',
+    backgroundColor: '#F2EFE9',
+    padding: 20,
+    borderRadius: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   aiTitle: {
     fontSize: 18,
@@ -407,9 +417,14 @@ export const detailStyles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.text,
   },
+  aiModalFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 16,
+    gap: 12,
+  },
   aiAddButton: {
     alignSelf: 'flex-start',
-    marginTop: 10,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
@@ -419,5 +434,24 @@ export const detailStyles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
     color: 'white',
+  },
+
+  // edit item modal
+  editModalContainer: {
+    width: '85%',
+    backgroundColor: '#F2EFE9',
+    padding: 20,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  editModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 16,
   },
 });
