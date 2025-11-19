@@ -10,7 +10,7 @@ import {
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { eventsData } from './data/homeScreenData.js';
+import eventsData from './data.json';
 import { globalStyles, colors } from './styles/styles.js'; 
 import { homeStyles } from './styles/homeStyles.js';
 import AddEventModal from './AddEventModal.js'; 
@@ -23,10 +23,32 @@ export default function HomeScreen({ navigation }) {
   );
   const [modalVisible, setModalVisible] = useState(false);
 
+  // Create update functions that can be passed to EventDetailScreen
+  const handleUpdateItems = (eventId, updatedItems) => {
+    setEvents(currentEvents => 
+      currentEvents.map(e => 
+        e.id === eventId ? { ...e, items: updatedItems } : e
+      )
+    );
+  };
+
+  const handleUpdateParticipants = (eventId, updatedParticipants) => {
+    setEvents(currentEvents => 
+      currentEvents.map(e => 
+        e.id === eventId ? { ...e, participants: updatedParticipants } : e
+      )
+    );
+  };
+
   const handlePress = (event) => {
     navigation.navigate('EventDetail', { 
+      eventId: event.id,
       eventTitle: event.title,
-      isNew: event.isNew ?? false
+      isNew: event.isNew ?? false,
+      initialItems: event.items || [],
+      participants: event.participants || (event.isNew ? ['Me'] : ['Me', 'A']),
+      onUpdateItems: handleUpdateItems,
+      onUpdateParticipants: handleUpdateParticipants
     });
   };
 
@@ -39,7 +61,11 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleAddEvent = (newEvent) => {
-    setEvents(currentEvents => [newEvent, ...currentEvents]);
+    setEvents(currentEvents => [{
+      ...newEvent,
+      items: [],
+      participants: ['Me']
+    }, ...currentEvents]);
   };
 
   const handleDeleteEvent = (id) => {
@@ -71,6 +97,8 @@ export default function HomeScreen({ navigation }) {
         onClose={handleCloseModal}
         onAddEvent={handleAddEvent}
         navigation={navigation}
+        onUpdateItems={handleUpdateItems}
+        onUpdateParticipants={handleUpdateParticipants}
       />
       
       <View style={homeStyles.header}>

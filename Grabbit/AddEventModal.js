@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 
@@ -30,13 +31,18 @@ const getBaseUrl = () => {
 
 const BASE_URL = getBaseUrl();
 
-export default function AddEventModal({ visible, onClose, onAddEvent, navigation }) {
+export default function AddEventModal({ visible, onClose, onAddEvent, navigation, onUpdateItems, onUpdateParticipants }) {
   const [newGroupName, setNewGroupName] = useState('');
   const [newComments, setNewComments] = useState('');
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
   const [isConnected, setIsConnected] = useState(null); // null = unknown, true = connected, false = offline
+  const [selectedParticipants, setSelectedParticipants] = useState(['Me']); // Start with "Me"
+  const [friendsModalVisible, setFriendsModalVisible] = useState(false);
+  
+  // Mock friends list - replace with actual friends data later
+  const friendsList = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'];
 
   // Reset state when modal closes
   useEffect(() => {
@@ -47,6 +53,8 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
       setIsLoadingSuggestions(false);
       setSelectedItems([]);
       setIsConnected(null);
+      setSelectedParticipants(['Me']);
+      setFriendsModalVisible(false);
     }
   }, [visible]);
 
@@ -152,30 +160,51 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
     });
   };
 
+  const handleToggleFriend = (friendName) => {
+    setSelectedParticipants(current => {
+      if (current.includes(friendName)) {
+        // Remove friend (but keep "Me")
+        return current.filter(name => name === friendName || name === 'Me');
+      } else {
+        // Add friend
+        return [...current, friendName];
+      }
+    });
+  };
+
   const handleAddNewGroup = () => {
     if (newGroupName.trim() === '') return;
     
-    // Navigate to EventDetail with selected items
-    navigation.navigate('EventDetail', { 
-      eventTitle: newGroupName,
-      isNew: true,
-      initialItems: selectedItems.map((item, index) => ({
-        id: Date.now() + index,
-        name: item.name,
-        urgent: false,
-        claimedBy: null,
-        bought: false,
-        price: null
-      }))
-    });
+    const newEventId = Date.now();
+    const initialItems = selectedItems.map((item, index) => ({
+      id: Date.now() + index,
+      name: item.name,
+      urgent: false,
+      claimedBy: null,
+      bought: false,
+      price: null
+    }));
     
-    // Call the callback to add event to the list
+    // Call the callback to add event to the list first
     onAddEvent({
-      id: Date.now(),
+      id: newEventId,
       title: newGroupName,
       icon: null,
       library: null,
       isNew: true,
+      items: initialItems,
+      participants: selectedParticipants
+    });
+    
+    // Navigate to EventDetail with selected items and participants
+    navigation.navigate('EventDetail', { 
+      eventId: newEventId,
+      eventTitle: newGroupName,
+      isNew: true,
+      initialItems: initialItems,
+      participants: selectedParticipants,
+      onUpdateItems: onUpdateItems,
+      onUpdateParticipants: onUpdateParticipants
     });
     
     onClose();
@@ -204,10 +233,18 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
 
             <View style={homeStyles.participantsRow}>
               <FontAwesome5 name="users" size={24} color={colors.text} />
-              <TouchableOpacity style={homeStyles.participantButton}>
-                <Text style={homeStyles.participantButtonText}>Me</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={homeStyles.participantAddButton}>
+              {selectedParticipants.map((participant, index) => (
+                <TouchableOpacity 
+                  key={index} 
+                  style={homeStyles.participantButton}
+                >
+                  <Text style={homeStyles.participantButtonText}>{participant}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity 
+                style={homeStyles.participantAddButton}
+                onPress={() => setFriendsModalVisible(true)}
+              >
                 <FontAwesome5 name="plus" size={32} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -250,10 +287,12 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
               </Text>
               {/* Connection indicator */}
               {!isLoadingSuggestions && isConnected !== null && (
-                <View style={[
-                  homeStyles.connectionIndicator,
-                  isConnected ? homeStyles.connectionIndicatorGreen : homeStyles.connectionIndicatorRed
-                ]} />
+                <FontAwesome5 
+                  name={isConnected ? "check-circle" : "times-circle"} 
+                  size={16} 
+                  color={isConnected ? "#4CAF50" : "#F44336"}
+                  style={homeStyles.connectionIndicatorIcon}
+                />
               )}
             </View>
             
@@ -286,8 +325,71 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
               </View>
             )}
           </View>
-        )}
+          )}
       </View>
+
+      {/* Friends Selection Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={friendsModalVisible}
+        onRequestClose={() => setFriendsModalVisible(false)}
+      >
+        <View style={globalStyles.modalOverlay}>
+          <View style={homeStyles.friendsModalContainer}>
+            <Text style={homeStyles.friendsModalTitle}>Select Friends</Text>
+            
+            <ScrollView 
+              style={homeStyles.friendsListContainer}
+              contentContainerStyle={{ paddingBottom: 10 }}
+            >
+              {friendsList.map((friend) => {
+                const isSelected = selectedParticipants.includes(friend);
+                return (
+                  <TouchableOpacity
+                    key={friend}
+                    style={[
+                      homeStyles.friendItem,
+                      isSelected && homeStyles.friendItemSelected
+                    ]}
+                    onPress={() => handleToggleFriend(friend)}
+                  >
+                    <View style={[
+                      homeStyles.friendCheckbox,
+                      isSelected && homeStyles.friendCheckboxSelected
+                    ]}>
+                      {isSelected && (
+                        <FontAwesome5 name="check" size={12} color={colors.background} />
+                      )}
+                    </View>
+                    <Text style={[
+                      homeStyles.friendName,
+                      isSelected && homeStyles.friendNameSelected
+                    ]}>
+                      {friend}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={homeStyles.friendsModalButtonRow}>
+              <TouchableOpacity
+                style={[homeStyles.modalActionButton, homeStyles.closeButton]}
+                onPress={() => setFriendsModalVisible(false)}
+              >
+                <FontAwesome5 name="times" size={20} color={colors.background} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[homeStyles.modalActionButton, homeStyles.confirmButton]}
+                onPress={() => setFriendsModalVisible(false)}
+              >
+                <FontAwesome5 name="check" size={20} color={colors.background} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }

@@ -23,6 +23,7 @@ export const detailStyles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: colors.accent,
     lineHeight: 34,
+    marginRight: 18,
   },
   subTitleText: {
     fontSize: 32,
@@ -92,8 +93,11 @@ export const detailStyles = StyleSheet.create({
     width: 22,
     height: 22,
     backgroundColor: '#DCD9CD', 
-    marginRight: 15,
+    marginRight: 8,
     borderRadius: 4,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   checkboxChecked: {
     backgroundColor: colors.text,
@@ -101,13 +105,18 @@ export const detailStyles = StyleSheet.create({
   checkboxPlaceholder: {
     width: 22,
     height: 22,
-    marginRight: 15,
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   listItemText: {
     fontSize: 18,
     fontFamily: fonts.regular,
     color: colors.text,
     flex: 1,
+    lineHeight: 22,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   
   // --- New Item Input ---
@@ -124,7 +133,8 @@ export const detailStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.4)', 
     paddingVertical: 10,
-    paddingHorizontal: 15,
+    paddingHorizontal: 12,
+    marginRight: 10,
     borderRadius: 12,
   },
 
@@ -184,6 +194,8 @@ export const detailStyles = StyleSheet.create({
 
   // --- Footer ---
   recentlyBoughtLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 40,
     marginBottom: 50,
     alignSelf: 'flex-start',

@@ -108,6 +108,7 @@ export const homeStyles = StyleSheet.create({
   participantsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginBottom: 20,
   },
   participantButton: {
@@ -205,19 +206,11 @@ export const homeStyles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: colors.accent,
     marginLeft: 8,
+    marginRight: 12,
     flex: 1,
   },
-  connectionIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  connectionIndicatorIcon: {
     marginLeft: 8,
-  },
-  connectionIndicatorGreen: {
-    backgroundColor: '#4CAF50',
-  },
-  connectionIndicatorRed: {
-    backgroundColor: '#F44336',
   },
   suggestionsGrid: {
     flexDirection: 'row',
@@ -258,5 +251,70 @@ export const homeStyles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.placeholder,
     fontStyle: 'italic',
+  },
+  
+  // --- Friends Selection Modal Styles ---
+  friendsModalContainer: {
+    backgroundColor: colors.cardBg,
+    width: '85%',
+    maxHeight: '70%',
+    borderRadius: 20,
+    padding: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  friendsModalTitle: {
+    fontSize: 24,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  friendsListContainer: {
+    maxHeight: 300,
+    marginBottom: 20,
+  },
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    marginBottom: 8,
+    borderRadius: 10,
+    backgroundColor: colors.inputBg,
+  },
+  friendItemSelected: {
+    backgroundColor: colors.accent,
+  },
+  friendCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.text,
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendCheckboxSelected: {
+    backgroundColor: colors.background,
+    borderColor: colors.background,
+  },
+  friendName: {
+    fontSize: 18,
+    fontFamily: fonts.regular,
+    color: colors.text,
+  },
+  friendNameSelected: {
+    color: colors.background,
+    fontFamily: fonts.bold,
+  },
+  friendsModalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 15,
   },
 });

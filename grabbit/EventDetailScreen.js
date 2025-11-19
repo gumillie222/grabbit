@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,23 @@ const BASE_URL =
     : 'http://10.0.2.2:4000';
 
 export default function EventDetailScreen({ route, navigation }) {
-  const { eventTitle, isNew, initialItems } = route.params || { eventTitle: "Unit 602", isNew: false, initialItems: null };
+  const { 
+    eventId, 
+    eventTitle, 
+    isNew, 
+    initialItems, 
+    participants: initialParticipants,
+    onUpdateItems,
+    onUpdateParticipants
+  } = route.params || { 
+    eventId: null,
+    eventTitle: "Unit 602", 
+    isNew: false, 
+    initialItems: null,
+    participants: null,
+    onUpdateItems: null,
+    onUpdateParticipants: null
+  };
 
   const [activeTab, setActiveTab] = useState('List'); 
   
@@ -34,25 +50,134 @@ export default function EventDetailScreen({ route, navigation }) {
   const [buyModalVisible, setBuyModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [priceInput, setPriceInput] = useState('');
-  const [showRecent, setShowRecent] = useState(true); 
+  const [showRecent, setShowRecent] = useState(true);
+  const [editingPriceItemId, setEditingPriceItemId] = useState(null);
+  const [editingPriceValue, setEditingPriceValue] = useState(''); 
 
-  // If this is a new event, start with an empty list or initial items from suggestions.
-  // Otherwise, use default template items.
-  const [items, setItems] = useState(
-    initialItems 
-      ? initialItems
-      : isNew
-      ? []
-      : [
-          { id: 1, name: 'dish soap',  urgent: true,  claimedBy: 'Me', bought: false, price: null },
-          { id: 2, name: 'paper towel', urgent: false, claimedBy: null,  bought: false, price: null },
-          { id: 3, name: 'flower',     urgent: true,  claimedBy: null,  bought: false, price: null },
-          { id: 4, name: 'milk 2%',    urgent: true,  claimedBy: 'Me', bought: false, price: null },
-        ]
-  );
+  // Items state - initialize from route params (from data.json)
+  const [items, setItems] = useState(() => {
+    // Deep copy to avoid reference issues
+    if (initialItems && Array.isArray(initialItems)) {
+      return JSON.parse(JSON.stringify(initialItems));
+    }
+    return [];
+  });
+
+  // Participants state - initialize from route params or default
+  const [participants, setParticipants] = useState(() => {
+    return initialParticipants || (isNew ? ['Me'] : ['Me', 'A']);
+  });
+
+  // Sync items when route params change (e.g., when navigating back)
+  useEffect(() => {
+    if (initialItems !== undefined) {
+      // Deep copy to avoid reference issues
+      if (Array.isArray(initialItems)) {
+        setItems(JSON.parse(JSON.stringify(initialItems)));
+      } else {
+        setItems([]);
+      }
+    }
+  }, [initialItems]);
+
+  // Sync participants when route params change
+  useEffect(() => {
+    if (initialParticipants !== undefined) {
+      setParticipants(initialParticipants);
+    }
+  }, [initialParticipants]);
+
+  // Persist items changes back to HomeScreen
+  useEffect(() => {
+    if (eventId && onUpdateItems) {
+      onUpdateItems(eventId, items);
+    }
+  }, [items, eventId, onUpdateItems]);
+
+  // Persist participants changes back to HomeScreen
+  useEffect(() => {
+    if (eventId && onUpdateParticipants) {
+      onUpdateParticipants(eventId, participants);
+    }
+  }, [participants, eventId, onUpdateParticipants]);
 
   const activeItems = items.filter(item => !item.bought);
   const recentItems = items.filter(item => item.bought);
+
+  // Calculate split finances - automatically updates when items or participants change
+  const splitData = useMemo(() => {
+    // Get all bought items with prices
+    const boughtItems = items.filter(item => item.bought && item.price && parseFloat(item.price) > 0);
+    
+    // Calculate total spent by each participant
+    const spentByPerson = {};
+    participants.forEach(p => spentByPerson[p] = 0);
+    
+    boughtItems.forEach(item => {
+      if (item.claimedBy && spentByPerson.hasOwnProperty(item.claimedBy)) {
+        const price = parseFloat(item.price) || 0;
+        spentByPerson[item.claimedBy] += price;
+      }
+    });
+    
+    // Calculate total spent
+    const totalSpent = Object.values(spentByPerson).reduce((sum, amount) => sum + amount, 0);
+    
+    // Calculate average per person
+    const averagePerPerson = participants.length > 0 ? totalSpent / participants.length : 0;
+    
+    // Calculate who owes whom
+    const balances = {};
+    participants.forEach(p => {
+      balances[p] = spentByPerson[p] - averagePerPerson;
+    });
+    
+    // Find who owes and who is owed
+    const debts = [];
+    const credits = [];
+    
+    participants.forEach(p => {
+      if (balances[p] < -0.01) { // Owing (negative balance)
+        debts.push({ person: p, amount: Math.abs(balances[p]) });
+      } else if (balances[p] > 0.01) { // Owed (positive balance)
+        credits.push({ person: p, amount: balances[p] });
+      }
+    });
+    
+    // Sort debts and credits by amount (largest first) for better matching
+    debts.sort((a, b) => b.amount - a.amount);
+    credits.sort((a, b) => b.amount - a.amount);
+    
+    // Match debts to credits
+    const transactions = [];
+    let debtIndex = 0;
+    let creditIndex = 0;
+    
+    while (debtIndex < debts.length && creditIndex < credits.length) {
+      const debt = debts[debtIndex];
+      const credit = credits[creditIndex];
+      
+      const amount = Math.min(debt.amount, credit.amount);
+      transactions.push({
+        from: debt.person,
+        to: credit.person,
+        amount: amount.toFixed(2)
+      });
+      
+      debt.amount -= amount;
+      credit.amount -= amount;
+      
+      if (debt.amount < 0.01) debtIndex++;
+      if (credit.amount < 0.01) creditIndex++;
+    }
+    
+    return {
+      totalSpent: totalSpent.toFixed(2),
+      averagePerPerson: averagePerPerson.toFixed(2),
+      transactions,
+      balances
+    };
+  }, [items, participants]);
 
   // ---- AI suggestions ----
   const [aiModalVisible, setAiModalVisible] = useState(false);
@@ -106,6 +231,39 @@ export default function EventDetailScreen({ route, navigation }) {
             : it
         )
       );
+    }
+  };
+
+  const handlePriceInputChange = (text) => {
+    // Only allow numbers and one decimal point
+    const numericRegex = /^\d*\.?\d*$/;
+    if (text === '' || numericRegex.test(text)) {
+      setPriceInput(text);
+    }
+  };
+
+  const handleEditPrice = (item) => {
+    setEditingPriceItemId(item.id);
+    setEditingPriceValue(item.price || '');
+  };
+
+  const handleSavePrice = (itemId) => {
+    setItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === itemId
+          ? { ...item, price: editingPriceValue || null }
+          : item
+      )
+    );
+    setEditingPriceItemId(null);
+    setEditingPriceValue('');
+  };
+
+  const handlePriceEditChange = (text) => {
+    // Only allow numbers and one decimal point
+    const numericRegex = /^\d*\.?\d*$/;
+    if (text === '' || numericRegex.test(text)) {
+      setEditingPriceValue(text);
     }
   };
 
@@ -225,14 +383,15 @@ export default function EventDetailScreen({ route, navigation }) {
       {/* Checkbox (claim / undo) */}
       <TouchableOpacity
         onPress={() => handleToggleBought(item)}
-        style={{ marginRight: 15 }}
+        style={{ justifyContent: 'center', alignItems: 'center' }}
       >
-        <View
-          style={[
-            detailStyles.checkbox,
-            item.bought && detailStyles.checkboxChecked,
-          ]}
-        />
+        {item.bought ? (
+          <View style={[detailStyles.checkbox, detailStyles.checkboxChecked]}>
+            <FontAwesome5 name="check" size={12} color={colors.background} />
+          </View>
+        ) : (
+          <View style={detailStyles.checkbox} />
+        )}
       </TouchableOpacity>
 
       {/* Name */}
@@ -252,18 +411,45 @@ export default function EventDetailScreen({ route, navigation }) {
 
       {/* Right-side icons */}
       <View style={detailStyles.iconGroup}>
-        {/* Price for recent items */}
-        {!isActiveList && item.price && (
-          <Text
-            style={{
-              marginRight: 10,
-              fontFamily: fonts.bold,
-              color: colors.text,
-              fontSize: 16,
-            }}
-          >
-            ${item.price}
-          </Text>
+        {/* Price for recent items - editable */}
+        {!isActiveList && (
+          editingPriceItemId === item.id ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
+              <Text style={{ fontFamily: fonts.bold, color: colors.text, fontSize: 16, marginRight: 2 }}>$</Text>
+              <TextInput
+                style={{
+                  fontFamily: fonts.bold,
+                  color: colors.text,
+                  fontSize: 16,
+                  minWidth: 50,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.accent,
+                  paddingVertical: 2,
+                }}
+                value={editingPriceValue}
+                onChangeText={handlePriceEditChange}
+                keyboardType="decimal-pad"
+                autoFocus={true}
+                onBlur={() => handleSavePrice(item.id)}
+                onSubmitEditing={() => handleSavePrice(item.id)}
+                placeholder="0.00"
+                placeholderTextColor={colors.modalPlaceholder}
+              />
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => handleEditPrice(item)}>
+              <Text
+                style={{
+                  marginRight: 10,
+                  fontFamily: fonts.bold,
+                  color: colors.text,
+                  fontSize: 16,
+                }}
+              >
+                ${item.price || '0.00'}
+              </Text>
+            </TouchableOpacity>
+          )
         )}
 
         {/* Urgency + Edit only on active list */}
@@ -311,7 +497,9 @@ export default function EventDetailScreen({ route, navigation }) {
 
       {/* ADD ITEM ROW */}
       <View style={detailStyles.addItemRow}>
-        <View style={detailStyles.checkboxPlaceholder} />
+        <View style={detailStyles.checkboxPlaceholder}>
+          <View style={detailStyles.checkbox} />
+        </View>
         <TextInput
           style={detailStyles.newItemInput}
           placeholder="New Item..."
@@ -320,7 +508,7 @@ export default function EventDetailScreen({ route, navigation }) {
           onChangeText={setNewItemText}
           onSubmitEditing={handleAddItem}
         />
-        <View style={[detailStyles.iconGroup, { marginLeft: 10 }]}>
+        <View style={detailStyles.iconGroup}>
           <TouchableOpacity onPress={() => setNewItemUrgent(!newItemUrgent)}>
             {newItemUrgent ? (
               <View style={detailStyles.urgentIcon}>
@@ -370,26 +558,65 @@ export default function EventDetailScreen({ route, navigation }) {
     </View>
   );
 
-  const renderSplitTab = () => (
-    <View style={detailStyles.splitCenterContainer}>
-      <View style={detailStyles.splitRow}>
-        <View style={detailStyles.avatarMedium}>
-          <Text style={detailStyles.avatarTextMedium}>A</Text>
+  const renderSplitTab = () => {
+    // Get first letter of name for avatar
+    const getInitial = (name) => name.charAt(0).toUpperCase();
+    
+    // If no transactions, show summary
+    if (splitData.transactions.length === 0) {
+      return (
+        <View style={detailStyles.splitCenterContainer}>
+          <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 16 }]}>
+            Total Spent: ${splitData.totalSpent}
+          </Text>
+          <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 14, color: colors.accent }]}>
+            Average per person: ${splitData.averagePerPerson}
+          </Text>
+          <Text style={[detailStyles.amountText, { fontSize: 14, color: '#999' }]}>
+            {parseFloat(splitData.totalSpent) === 0 
+              ? 'No items purchased yet' 
+              : 'All settled up!'}
+          </Text>
+          {parseFloat(splitData.totalSpent) > 0 && (
+            <TouchableOpacity style={[detailStyles.settleButton, { marginTop: 30 }]}>
+              <Text style={detailStyles.settleButtonText}>Settle</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        <View style={detailStyles.arrowContainer}>
-          <Text style={detailStyles.amountText}>$1.44</Text>
-          <View style={detailStyles.arrowLine} />
-          <View style={detailStyles.arrowHead} />
-        </View>
-        <View style={detailStyles.avatarMedium}>
-          <Text style={detailStyles.avatarTextMedium}>Me</Text>
-        </View>
+      );
+    }
+    
+    // Render transactions
+    return (
+      <View style={detailStyles.splitCenterContainer}>
+        <Text style={[detailStyles.amountText, { marginBottom: 30, fontSize: 16 }]}>
+          Total Spent: ${splitData.totalSpent}
+        </Text>
+        {splitData.transactions.map((transaction, index) => (
+          <View key={index} style={detailStyles.splitRow}>
+            <View style={detailStyles.avatarMedium}>
+              <Text style={detailStyles.avatarTextMedium}>
+                {getInitial(transaction.from)}
+              </Text>
+            </View>
+            <View style={detailStyles.arrowContainer}>
+              <Text style={detailStyles.amountText}>${transaction.amount}</Text>
+              <View style={detailStyles.arrowLine} />
+              <View style={detailStyles.arrowHead} />
+            </View>
+            <View style={detailStyles.avatarMedium}>
+              <Text style={detailStyles.avatarTextMedium}>
+                {getInitial(transaction.to)}
+              </Text>
+            </View>
+          </View>
+        ))}
+        <TouchableOpacity style={[detailStyles.settleButton, { marginTop: 30 }]}>
+          <Text style={detailStyles.settleButtonText}>Settle</Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity style={detailStyles.settleButton}>
-        <Text style={detailStyles.settleButtonText}>Settle</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={globalStyles.container}>
@@ -426,14 +653,16 @@ export default function EventDetailScreen({ route, navigation }) {
             color={colors.text}
             style={{ marginRight: 8 }}
           />
-          <View style={detailStyles.avatarSmallSelected}>
-            <Text style={detailStyles.avatarTextSmall}>Me</Text>
-          </View>
-          {!isNew && (
-            <View style={detailStyles.avatarSmall}>
-              <Text style={detailStyles.avatarTextSmall}>A</Text>
+          {participants.map((participant, index) => (
+            <View 
+              key={index}
+              style={participant === 'Me' ? detailStyles.avatarSmallSelected : detailStyles.avatarSmall}
+            >
+              <Text style={detailStyles.avatarTextSmall}>
+                {participant === 'Me' ? 'Me' : participant.charAt(0).toUpperCase()}
+              </Text>
             </View>
-          )}
+          ))}
           <TouchableOpacity style={detailStyles.addParticipant}>
             <FontAwesome5 name="plus" size={10} color={colors.text} />
           </TouchableOpacity>
@@ -495,9 +724,9 @@ export default function EventDetailScreen({ route, navigation }) {
               <TextInput
                 style={detailStyles.priceInput}
                 placeholder="0.00"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 value={priceInput}
-                onChangeText={setPriceInput}
+                onChangeText={handlePriceInputChange}
                 autoFocus={true}
                 placeholderTextColor={colors.modalPlaceholder}
               />

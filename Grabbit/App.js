@@ -17,7 +17,6 @@ import {
 } from '@expo-google-fonts/josefin-sans';
 
 import HomeStackNavigator from './HomeStackNavigator'; 
-import RealtimeDemoScreen from './RealtimeDemoScreen';
 import ProfileScreen from './ProfileScreen';
 
 SplashScreen.preventAutoHideAsync();
@@ -77,10 +76,6 @@ export default function App() {
           >
             <Tab.Screen name="Home" component={HomeStackNavigator} />
             <Tab.Screen name="Me" component={ProfileScreen} />
-            <Tab.Screen
-              name="Realtime"
-              children={() => <RealtimeDemoScreen serverUrl={SERVER_URL} room="demo1" />}
-            />
           </Tab.Navigator>
         </NavigationContainer>
       </View>
