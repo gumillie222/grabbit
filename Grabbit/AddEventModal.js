@@ -36,6 +36,7 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [isConnected, setIsConnected] = useState(null); // null = unknown, true = connected, false = offline
 
   // Reset state when modal closes
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
       setAiSuggestions([]);
       setIsLoadingSuggestions(false);
       setSelectedItems([]);
+      setIsConnected(null);
     }
   }, [visible]);
 
@@ -61,8 +63,9 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
             const description = `${newGroupName} ${newComments}`.trim();
             const url = `${BASE_URL}/api/suggestions`;
             
-            console.log(`[AddEventModal] Fetching suggestions from: ${url}`);
-            console.log(`[AddEventModal] Platform: ${Platform.OS}, Description: "${description.substring(0, 50)}..."`);
+            // Try to fetch AI suggestions with a timeout
+            const controller = new AbortController();
+            const fetchTimeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
             
             const res = await fetch(url, {
               method: 'POST',
@@ -74,18 +77,17 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
                 description,
                 pastItems: [],
               }),
+              signal: controller.signal,
             });
 
-            console.log(`[AddEventModal] Response status: ${res.status}`);
+            clearTimeout(fetchTimeout);
 
             if (!res.ok) {
-              const errorText = await res.text();
-              console.error(`[AddEventModal] HTTP error! status: ${res.status}, body: ${errorText}`);
-              throw new Error(`HTTP error! status: ${res.status}`);
+              // If server returns error, fall back to placeholder items
+              throw new Error('Server error');
             }
 
             const data = await res.json(); // { suggestions: string[] }
-            console.log(`[AddEventModal] Received ${data.suggestions?.length || 0} suggestions`);
             
             // Map string array to objects with id and name
             const mappedSuggestions = (data.suggestions || []).map((name, idx) => ({
@@ -94,14 +96,33 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
             }));
 
             setAiSuggestions(mappedSuggestions);
+            setIsConnected(true); // Successfully connected
           } catch (error) {
-            console.error('[AddEventModal] Error fetching suggestions:', error);
-            console.error('[AddEventModal] Error message:', error.message);
-            console.error('[AddEventModal] BASE_URL was:', BASE_URL);
-            console.error('[AddEventModal] Platform:', Platform.OS);
+            // Silently fall back to placeholder items - no error shown to user
+            // Only log to console for debugging
+            if (error.name !== 'AbortError') {
+              console.log('[AddEventModal] Using fallback items (connection unavailable)');
+            }
             
-            // Don't clear suggestions on error - keep previous ones if any
-            // setAiSuggestions([]);
+            setIsConnected(false); // Connection failed
+            
+            // Fallback to basic grocery items when connection fails
+            const fallbackItems = [
+              { id: 'fallback-1', name: 'Milk' },
+              { id: 'fallback-2', name: 'Bread' },
+              { id: 'fallback-3', name: 'Eggs' },
+              { id: 'fallback-4', name: 'Butter' },
+              { id: 'fallback-5', name: 'Cheese' },
+              { id: 'fallback-6', name: 'Chicken' },
+              { id: 'fallback-7', name: 'Rice' },
+              { id: 'fallback-8', name: 'Pasta' },
+              { id: 'fallback-9', name: 'Tomatoes' },
+              { id: 'fallback-10', name: 'Onions' },
+              { id: 'fallback-11', name: 'Bananas' },
+              { id: 'fallback-12', name: 'Yogurt' },
+            ];
+            
+            setAiSuggestions(fallbackItems);
           } finally {
             setIsLoadingSuggestions(false);
           }
@@ -227,6 +248,13 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
               <Text style={homeStyles.suggestionsHeaderText}>
                 {isLoadingSuggestions ? 'Generating suggestions...' : 'Grabbit Suggests:'}
               </Text>
+              {/* Connection indicator */}
+              {!isLoadingSuggestions && isConnected !== null && (
+                <View style={[
+                  homeStyles.connectionIndicator,
+                  isConnected ? homeStyles.connectionIndicatorGreen : homeStyles.connectionIndicatorRed
+                ]} />
+              )}
             </View>
             
             {isLoadingSuggestions ? (
