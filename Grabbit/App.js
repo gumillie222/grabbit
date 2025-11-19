@@ -17,7 +17,6 @@ import {
 } from '@expo-google-fonts/josefin-sans';
 
 import HomeStackNavigator from './HomeStackNavigator'; 
-import StylesScreen from './StylesScreen';
 import RealtimeDemoScreen from './RealtimeDemoScreen';
 import ProfileScreen from './ProfileScreen';
 
