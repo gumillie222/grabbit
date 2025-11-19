@@ -2,7 +2,6 @@ import { StyleSheet } from 'react-native';
 import { colors, fonts } from './styles';
 
 export const homeStyles = StyleSheet.create({
-  // ... (Header and Grid styles remain unchanged)
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -33,27 +32,51 @@ export const homeStyles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
+
+  // --- CARD LAYOUT ---
+  cardWrapper: {
+    position: 'relative',
+    width: '47%',
+    marginBottom: 20,
+  },
+  
   card: {
     backgroundColor: colors.cardBg,
-    width: '47%',
-    aspectRatio: 1,
+    width: '100%',
+    height: 120,           // FIXED HEIGHT
     borderRadius: 16,
     padding: 16,
-    marginBottom: 20,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
+  
   cardTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontFamily: fonts.regular,
     color: colors.text,
-    lineHeight: 28,
+    lineHeight: 24,
+    textAlign: 'left',
+    flexShrink: 1,        // prevent overflow
+    flexWrap: 'wrap',     // allow full wrapping
   },
-  
+
+  deleteBubble: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.color6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+
   // --- Modal Styles ---
   modalContainer: {
     backgroundColor: colors.cardBg,
@@ -65,11 +88,7 @@ export const homeStyles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
-    // The blue border/outline from the first image is removed to show the content of the second image.
   },
-  
-  // The 'Group Name' label is not present in the second image; we will use the input as the label.
-  // The input background and border should match the orange modal background (or be a slight variant).
   modalInput: {
     backgroundColor: colors.inputBg,
     borderRadius: 10,
@@ -78,23 +97,19 @@ export const homeStyles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.text,
     marginBottom: 20,
-    fontWeight: 'bold', // Group Name is bold in the image
+    fontWeight: 'bold',
   },
-  // The 'Group Name' text itself is not a separate label in the second image.
-  // We'll keep modalLabel for the Comments section.
   modalCommentLabel: {
     fontSize: 20,
     fontFamily: fonts.bold,
     color: colors.placeholder,
     marginBottom: 10,
   },
-  
   participantsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
-  // Participant button background should be the same as the input field.
   participantButton: {
     backgroundColor: colors.inputBg,
     paddingVertical: 10,
@@ -116,7 +131,6 @@ export const homeStyles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 10,
   },
-
   commentsInput: {
     backgroundColor: colors.inputBg,
     borderRadius: 10,
@@ -140,14 +154,12 @@ export const homeStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  
   closeButton: {
     backgroundColor: colors.text, 
   },
   confirmButton: {
     backgroundColor: colors.accent,
   },
-  
   suggestedText: {
     fontSize: 16,
     fontFamily: fonts.bold,
