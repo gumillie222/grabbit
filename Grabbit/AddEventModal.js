@@ -13,19 +13,19 @@ import { globalStyles, colors } from './styles/styles.js';
 import { homeStyles } from './styles/homeStyles.js';
 
 // Determine the correct BASE_URL based on platform
-// For physical devices, you may need to use your Mac's local IP (e.g., http://10.102.227.218:3000)
+// For physical devices, you may need to use your Mac's local IP (e.g., http://10.102.227.218:4000)
 const getBaseUrl = () => {
   if (Platform.OS === 'web') {
-    return 'http://localhost:3000';
+    return 'http://localhost:4000';
   } else if (Platform.OS === 'ios') {
     // iOS Simulator uses localhost, physical device needs Mac's IP
     // If localhost doesn't work on physical device, replace with your Mac's IP
-    return __DEV__ ? 'http://localhost:3000' : 'http://10.102.227.218:3000';
+    return __DEV__ ? 'http://localhost:4000' : 'http://10.102.227.218:4000';
   } else if (Platform.OS === 'android') {
     // Android emulator uses 10.0.2.2, physical device needs Mac's IP
-    return __DEV__ ? 'http://10.0.2.2:3000' : 'http://10.102.227.218:3000';
+    return __DEV__ ? 'http://10.0.2.2:4000' : 'http://10.102.227.218:4000';
   }
-  return 'http://localhost:3000';
+  return 'http://localhost:4000';
 };
 
 const BASE_URL = getBaseUrl();

@@ -18,8 +18,8 @@ import { detailStyles } from './styles/eventDetailStyles.js';
 
 const BASE_URL =
   Platform.OS === 'web' || Platform.OS === 'ios'
-    ? 'http://localhost:3000'
-    : 'http://10.0.2.2:3000';
+    ? 'http://localhost:4000'
+    : 'http://10.0.2.2:4000';
 
 export default function EventDetailScreen({ route, navigation }) {
   const { eventTitle, isNew, initialItems } = route.params || { eventTitle: "Unit 602", isNew: false, initialItems: null };

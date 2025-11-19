@@ -7,8 +7,24 @@ const OpenAI = require("openai");
 require("dotenv").config();
 
 const app = express();
-app.use(cors());
+
+// Enhanced CORS configuration
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log(`[REQUEST] Origin: ${req.headers.origin || 'none'}`);
+  next();
+});
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
@@ -32,10 +48,30 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: Date.now() });
+});
+
 app.post("/api/suggestions", async (req, res) => {
-  const { description, pastItems = [] } = req.body;
+  // Set CORS headers explicitly
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+
+  console.log("[API] POST /api/suggestions called");
+  console.log("[API] Request body:", JSON.stringify(req.body));
 
   try {
+    const { description, pastItems = [] } = req.body;
+
+    // Validate input
+    if (!description || typeof description !== "string" || description.trim().length === 0) {
+      return res.status(400).json({ 
+        error: "Description is required",
+        suggestions: [] 
+      });
+    }
     const messages = [
       {
         role: "system",
@@ -67,14 +103,23 @@ Already have: ${pastItems.join(", ") || "(none)"}
       throw new Error("Model did not return a suggestions array");
     }
 
+    console.log(`[AI Response] Generated ${data.suggestions.length} suggestions`);
     res.json({ suggestions: data.suggestions });
   } catch (err) {
-    console.error("AI suggestion error:", err.message);
-    res.status(500).json({ error: "Failed to generate suggestions" });
+    console.error("[ERROR] AI suggestion error:", err.message);
+    console.error("[ERROR] Error stack:", err.stack);
+    
+    // Ensure response is sent even on error
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: err.message || "Failed to generate suggestions",
+        suggestions: [] 
+      });
+    }
   }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, "0.0.0.0", () =>
   console.log(`Realtime + AI server running on port ${PORT}`)
 );
