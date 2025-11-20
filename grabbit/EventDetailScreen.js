@@ -42,6 +42,7 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const [activeTab, setActiveTab] = useState('List'); 
+  const [hasSettled, setHasSettled] = useState(false);
   
   // Input States
   const [newItemText, setNewItemText] = useState('');
@@ -207,6 +208,30 @@ export default function EventDetailScreen({ route, navigation }) {
       )
     );
   };
+
+  const toggleItemClaim = (id) => {
+    setItems(currentItems => 
+      currentItems.map(item => 
+        item.id === id 
+          ? { ...item, claimedBy: item.claimedBy === 'Me' ? null : 'Me' } 
+          : item
+      )
+    );
+  };
+
+  const handleSettle = () => {
+    // Remove all bought items (clearing finances)
+    setItems(currentItems => currentItems.filter(item => !item.bought));
+    setHasSettled(true);
+  };
+
+  // Reset settled state when items are bought again
+  useEffect(() => {
+    const boughtItems = items.filter(item => item.bought && item.price && parseFloat(item.price) > 0);
+    if (boughtItems.length > 0) {
+      setHasSettled(false);
+    }
+  }, [items]);
 
   const handleAddItem = () => {
     if (newItemText.trim() === '') return;
@@ -460,13 +485,28 @@ export default function EventDetailScreen({ route, navigation }) {
           )
         )}
 
-        {/* Urgency + Edit only on active list */}
+        {/* Urgency + Claim + Edit only on active list */}
         {isActiveList && (
           <>
             <TouchableOpacity onPress={() => toggleItemUrgency(item.id)}>
               {item.urgent ? (
                 <View style={detailStyles.urgentIcon}>
                   <Text style={detailStyles.exclamation}>!</Text>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    detailStyles.dashedCircle,
+                    { borderColor: '#ccc', borderStyle: 'solid' },
+                  ]}
+                />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => toggleItemClaim(item.id)}>
+              {item.claimedBy === 'Me' ? (
+                <View style={detailStyles.avatarSmallSelected}>
+                  <Text style={detailStyles.avatarTextSmall}>Me</Text>
                 </View>
               ) : (
                 <View
@@ -574,21 +614,30 @@ export default function EventDetailScreen({ route, navigation }) {
     if (splitData.transactions.length === 0) {
       return (
         <View style={detailStyles.splitCenterContainer}>
-          <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 16 }]}>
-            Total Spent: ${splitData.totalSpent}
-          </Text>
-          <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 14, color: colors.accent }]}>
-            Average per person: ${splitData.averagePerPerson}
-          </Text>
-          <Text style={[detailStyles.amountText, { fontSize: 14, color: '#999' }]}>
-            {parseFloat(splitData.totalSpent) === 0 
-              ? 'No items purchased yet' 
-              : 'All settled up!'}
-          </Text>
-          {parseFloat(splitData.totalSpent) > 0 && (
-            <TouchableOpacity style={[detailStyles.settleButton, { marginTop: 30 }]}>
-              <Text style={detailStyles.settleButtonText}>Settle</Text>
-            </TouchableOpacity>
+          {parseFloat(splitData.totalSpent) === 0 ? (
+            <>
+              <Text style={[detailStyles.amountText, { fontSize: 14, color: '#999' }]}>
+                {hasSettled ? 'All cleared up' : 'No items purchased yet'}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 16 }]}>
+                Total Spent: ${splitData.totalSpent}
+              </Text>
+              <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 14, color: colors.accent }]}>
+                Average per person: ${splitData.averagePerPerson}
+              </Text>
+              <Text style={[detailStyles.amountText, { fontSize: 14, color: '#999' }]}>
+                All settled up!
+              </Text>
+              <TouchableOpacity 
+                style={[detailStyles.settleButton, { marginTop: 30 }]}
+                onPress={handleSettle}
+              >
+                <Text style={detailStyles.settleButtonText}>Settle</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       );
@@ -619,7 +668,10 @@ export default function EventDetailScreen({ route, navigation }) {
             </View>
           </View>
         ))}
-        <TouchableOpacity style={[detailStyles.settleButton, { marginTop: 30 }]}>
+        <TouchableOpacity 
+          style={[detailStyles.settleButton, { marginTop: 30 }]}
+          onPress={handleSettle}
+        >
           <Text style={detailStyles.settleButtonText}>Settle</Text>
         </TouchableOpacity>
       </View>
@@ -643,13 +695,10 @@ export default function EventDetailScreen({ route, navigation }) {
           <FontAwesome5 name="chevron-left" size={22} color={colors.text} />
         </TouchableOpacity>
 
-        {/* CENTER: Title */}
-        <View style={detailStyles.headerCenter}>
+        {/* RIGHT: Title */}
+        <View style={detailStyles.headerRight}>
           <Text style={detailStyles.titleText}>{eventTitle}</Text>
         </View>
-
-        {/* RIGHT: Placeholder to balance spacing */}
-        <View style={detailStyles.headerSide} />
       </View>
 
         <View style={detailStyles.participantsRow}>

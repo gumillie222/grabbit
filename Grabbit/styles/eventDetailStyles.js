@@ -22,13 +22,17 @@ export const detailStyles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
+  headerRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
 
   titleText: {
     fontSize: 32,
     fontFamily: fonts.bold,
     color: colors.accent,
     lineHeight: 34,
-    marginRight: 18,
+    textAlign: 'right',
   },
   subTitleText: {
     fontSize: 32,
