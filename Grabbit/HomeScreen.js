@@ -5,13 +5,16 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Alert
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import eventsData from './data.json';
-import { globalStyles, colors } from './styles/styles.js'; 
+import { globalStyles, colors, fonts } from './styles/styles.js'; 
 import { homeStyles } from './styles/homeStyles.js';
 import AddEventModal from './AddEventModal.js'; 
 
@@ -22,6 +25,8 @@ export default function HomeScreen({ navigation }) {
     eventsData.map(e => ({ ...e, isNew: false }))
   );
   const [modalVisible, setModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState(null);
 
   // Create update functions that can be passed to EventDetailScreen
   const handleUpdateItems = (eventId, updatedItems) => {
@@ -69,23 +74,21 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleDeleteEvent = (id) => {
-    Alert.alert(
-      'Delete Event',
-      'Are you sure you want to delete this event?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setEvents(currentEvents => currentEvents.filter(e => e.id !== id));
-          }
-        }
-      ]
-    );
+    setEventToDelete(id);
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDelete = () => {
+    if (eventToDelete) {
+      setEvents(currentEvents => currentEvents.filter(e => e.id !== eventToDelete));
+      setDeleteModalVisible(false);
+      setEventToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteModalVisible(false);
+    setEventToDelete(null);
   };
 
   return (
@@ -131,6 +134,46 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
       </ScrollView>
+
+      {/* ---- DELETE CONFIRMATION MODAL ---- */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={deleteModalVisible}
+        onRequestClose={cancelDelete}
+      >
+        <TouchableWithoutFeedback onPress={cancelDelete}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={homeStyles.deleteModalContainer}>
+                  <Text style={homeStyles.deleteModalTitle}>Delete Event</Text>
+                  <Text style={homeStyles.deleteModalMessage}>
+                    Are you sure you want to delete this event?
+                  </Text>
+                  <View style={homeStyles.deleteModalActions}>
+                    <TouchableOpacity
+                      style={homeStyles.deleteModalCancelBtn}
+                      onPress={cancelDelete}
+                    >
+                      <FontAwesome5 name="times" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={homeStyles.deleteModalConfirmBtn}
+                      onPress={confirmDelete}
+                    >
+                      <FontAwesome5 name="check" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }

@@ -317,4 +317,51 @@ export const homeStyles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 15,
   },
+
+  // --- Delete Confirmation Modal Styles ---
+  deleteModalContainer: {
+    width: '85%',
+    backgroundColor: colors.background,
+    padding: 25,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  deleteModalTitle: {
+    fontSize: 22,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: 15,
+  },
+  deleteModalMessage: {
+    fontSize: 16,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    marginBottom: 25,
+    lineHeight: 22,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  deleteModalCancelBtn: {
+    backgroundColor: '#5A6770',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModalConfirmBtn: {
+    backgroundColor: colors.accent,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
