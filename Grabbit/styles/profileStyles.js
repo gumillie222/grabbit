@@ -68,4 +68,55 @@ export const profileStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
   },
+
+  // Edit modal
+  modalContainer: {
+    width: '90%',
+    backgroundColor: colors.cardBg,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'left',
+  },
+  modalInput: {
+    backgroundColor: colors.inputBg,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 18,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    marginBottom: 12,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    marginLeft: 10,
+  },
+  cancelButton: {
+    backgroundColor: colors.text,
+  },
+  saveButton: {
+    backgroundColor: colors.accent,
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: fonts.bold,
+  },
 });
