@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,12 @@ import {
   Alert,
   TouchableWithoutFeedback,
 } from 'react-native';
-import Constants from 'expo-constants'; 
+import Constants from 'expo-constants';
 import { FontAwesome5 } from '@expo/vector-icons';
 
 import { globalStyles, colors, fonts } from './styles/styles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
+import { EventContext } from './EventContext';
 
 const BASE_URL =
   Platform.OS === 'web' || Platform.OS === 'ios'
@@ -23,30 +24,28 @@ const BASE_URL =
     : 'http://10.0.2.2:4000';
 
 export default function EventDetailScreen({ route, navigation }) {
-  const { 
-    eventId, 
-    eventTitle, 
-    isNew, 
-    initialItems, 
+  const {
+    eventId,
+    eventTitle = 'Unit 602',
+    isNew = false,
+    initialItems,
     participants: initialParticipants,
-    onUpdateItems,
-    onUpdateParticipants
-  } = route.params || { 
-    eventId: null,
-    eventTitle: "Unit 602", 
-    isNew: false, 
-    initialItems: null,
-    participants: null,
-    onUpdateItems: null,
-    onUpdateParticipants: null
-  };
+    isArchived = false,
+  } = route.params || {};
 
-  const [activeTab, setActiveTab] = useState('List'); 
+  const isReadOnly = !!isArchived;
+
+  // ---- Event context ----
+  const eventCtx = useContext(EventContext);
+  const ctxUpdateItems = eventCtx?.updateItems;
+  const ctxUpdateParticipants = eventCtx?.updateParticipants;
+
+  const [activeTab, setActiveTab] = useState('List');
   const [hasSettled, setHasSettled] = useState(false);
-  
+
   // Input States
   const [newItemText, setNewItemText] = useState('');
-  const [newItemUrgent, setNewItemUrgent] = useState(false); 
+  const [newItemUrgent, setNewItemUrgent] = useState(false);
 
   // Modal States
   const [buyModalVisible, setBuyModalVisible] = useState(false);
@@ -54,130 +53,117 @@ export default function EventDetailScreen({ route, navigation }) {
   const [priceInput, setPriceInput] = useState('');
   const [showRecent, setShowRecent] = useState(true);
   const [editingPriceItemId, setEditingPriceItemId] = useState(null);
-  const [editingPriceValue, setEditingPriceValue] = useState(''); 
+  const [editingPriceValue, setEditingPriceValue] = useState('');
 
-  // Items state - initialize from route params (from data.json)
+  // Items state - initialize once from route params
   const [items, setItems] = useState(() => {
-    // Deep copy to avoid reference issues
     if (initialItems && Array.isArray(initialItems)) {
       return JSON.parse(JSON.stringify(initialItems));
     }
     return [];
   });
 
-  // Participants state - initialize from route params or default
+  // Participants state - initialize once from route params or default
   const [participants, setParticipants] = useState(() => {
     return initialParticipants || (isNew ? ['Me'] : ['Me', 'A']);
   });
 
-  // Sync items when route params change (e.g., when navigating back)
-  useEffect(() => {
-    if (initialItems !== undefined) {
-      // Deep copy to avoid reference issues
-      if (Array.isArray(initialItems)) {
-        setItems(JSON.parse(JSON.stringify(initialItems)));
-      } else {
-        setItems([]);
-      }
-    }
-  }, [initialItems]);
+  const showArchivedAlert = () => {
+    Alert.alert(
+      'Archived event',
+      'Archived events are not editable. Please recycle it back to home page if you want to make any changes.'
+    );
+  };
 
-  // Sync participants when route params change
+  // Persist items changes via context (only if NOT archived)
   useEffect(() => {
-    if (initialParticipants !== undefined) {
-      setParticipants(initialParticipants);
-    }
-  }, [initialParticipants]);
+    if (isReadOnly) return;
+    if (!eventId || !ctxUpdateItems) return;
+    ctxUpdateItems(eventId, items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, eventId]);
 
-  // Persist items changes back to HomeScreen
+  // Persist participants changes via context (only if NOT archived)
   useEffect(() => {
-    if (eventId && onUpdateItems) {
-      onUpdateItems(eventId, items);
-    }
-  }, [items, eventId, onUpdateItems]);
-
-  // Persist participants changes back to HomeScreen
-  useEffect(() => {
-    if (eventId && onUpdateParticipants) {
-      onUpdateParticipants(eventId, participants);
-    }
-  }, [participants, eventId, onUpdateParticipants]);
+    if (isReadOnly) return;
+    if (!eventId || !ctxUpdateParticipants) return;
+    ctxUpdateParticipants(eventId, participants);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participants, eventId]);
 
   const activeItems = items.filter(item => !item.bought);
   const recentItems = items.filter(item => item.bought);
 
   // Calculate split finances - automatically updates when items or participants change
   const splitData = useMemo(() => {
-    // Get all bought items with prices
-    const boughtItems = items.filter(item => item.bought && item.price && parseFloat(item.price) > 0);
-    
-    // Calculate total spent by each participant
+    const boughtItems = items.filter(
+      item => item.bought && item.price && parseFloat(item.price) > 0
+    );
+
     const spentByPerson = {};
-    participants.forEach(p => spentByPerson[p] = 0);
-    
+    participants.forEach(p => (spentByPerson[p] = 0));
+
     boughtItems.forEach(item => {
       if (item.claimedBy && spentByPerson.hasOwnProperty(item.claimedBy)) {
         const price = parseFloat(item.price) || 0;
         spentByPerson[item.claimedBy] += price;
       }
     });
-    
-    // Calculate total spent
-    const totalSpent = Object.values(spentByPerson).reduce((sum, amount) => sum + amount, 0);
-    
-    // Calculate average per person
-    const averagePerPerson = participants.length > 0 ? totalSpent / participants.length : 0;
-    
-    // Calculate who owes whom
+
+    const totalSpent = Object.values(spentByPerson).reduce(
+      (sum, amount) => sum + amount,
+      0
+    );
+
+    const averagePerPerson =
+      participants.length > 0 ? totalSpent / participants.length : 0;
+
     const balances = {};
     participants.forEach(p => {
       balances[p] = spentByPerson[p] - averagePerPerson;
     });
-    
-    // Find who owes and who is owed
+
     const debts = [];
     const credits = [];
-    
+
     participants.forEach(p => {
-      if (balances[p] < -0.01) { // Owing (negative balance)
+      if (balances[p] < -0.01) {
         debts.push({ person: p, amount: Math.abs(balances[p]) });
-      } else if (balances[p] > 0.01) { // Owed (positive balance)
+      } else if (balances[p] > 0.01) {
         credits.push({ person: p, amount: balances[p] });
       }
     });
-    
-    // Sort debts and credits by amount (largest first) for better matching
+
     debts.sort((a, b) => b.amount - a.amount);
     credits.sort((a, b) => b.amount - a.amount);
-    
-    // Match debts to credits
+
     const transactions = [];
     let debtIndex = 0;
     let creditIndex = 0;
-    
+
     while (debtIndex < debts.length && creditIndex < credits.length) {
       const debt = debts[debtIndex];
       const credit = credits[creditIndex];
-      
+
       const amount = Math.min(debt.amount, credit.amount);
       transactions.push({
         from: debt.person,
         to: credit.person,
-        amount: amount.toFixed(2)
+        amount: amount.toFixed(2),
       });
-      
+
       debt.amount -= amount;
       credit.amount -= amount;
-      
+
       if (debt.amount < 0.01) debtIndex++;
       if (credit.amount < 0.01) creditIndex++;
     }
-    
+
     return {
       totalSpent: totalSpent.toFixed(2),
       averagePerPerson: averagePerPerson.toFixed(2),
       transactions,
-      balances
+      balances,
     };
   }, [items, participants]);
 
@@ -189,9 +175,6 @@ export default function EventDetailScreen({ route, navigation }) {
   const closeAiModal = () => {
     setAiModalVisible(false);
     setIsGenerating(false);
-    // optional: clear fields between uses
-    // setDescription('');
-    // setSuggestions([]);
   };
 
   // ---- Edit item modal ----
@@ -199,66 +182,85 @@ export default function EventDetailScreen({ route, navigation }) {
   const [editingItem, setEditingItem] = useState(null);
   const [editText, setEditText] = useState('');
 
-  // --- Logic ---
+  // --- Logic (all write operations guarded by isReadOnly) ---
 
-  const toggleItemUrgency = (id) => {
-    setItems(currentItems => 
-      currentItems.map(item => 
+  const toggleItemUrgency = id => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
+    setItems(currentItems =>
+      currentItems.map(item =>
         item.id === id ? { ...item, urgent: !item.urgent } : item
       )
     );
   };
 
-  const toggleItemClaim = (id) => {
-    setItems(currentItems => 
-      currentItems.map(item => 
-        item.id === id 
-          ? { ...item, claimedBy: item.claimedBy === 'Me' ? null : 'Me' } 
+  const toggleItemClaim = id => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
+    setItems(currentItems =>
+      currentItems.map(item =>
+        item.id === id
+          ? { ...item, claimedBy: item.claimedBy === 'Me' ? null : 'Me' }
           : item
       )
     );
   };
 
   const handleSettle = () => {
-    // Remove all bought items (clearing finances)
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     setItems(currentItems => currentItems.filter(item => !item.bought));
     setHasSettled(true);
   };
 
   // Reset settled state when items are bought again
   useEffect(() => {
-    const boughtItems = items.filter(item => item.bought && item.price && parseFloat(item.price) > 0);
+    const boughtItems = items.filter(
+      item => item.bought && item.price && parseFloat(item.price) > 0
+    );
     if (boughtItems.length > 0) {
       setHasSettled(false);
     }
   }, [items]);
 
   const handleAddItem = () => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     if (newItemText.trim() === '') return;
     const newItem = {
       id: Date.now(),
       name: newItemText,
-      urgent: newItemUrgent, 
+      urgent: newItemUrgent,
       claimedBy: null,
       bought: false,
-      price: null
+      price: null,
     };
     setItems([...items, newItem]);
     setNewItemText('');
-    setNewItemUrgent(false); 
+    setNewItemUrgent(false);
   };
 
   // ---- Claim / un-claim via checkbox ----
-  const handleToggleBought = (item) => {
+  const handleToggleBought = item => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     if (!item.bought) {
-      // going from unbought -> bought: open price modal
       setSelectedItem(item);
       setPriceInput('');
       setBuyModalVisible(true);
     } else {
-      // undo buy: move back to active list
-      setItems((current) =>
-        current.map((it) =>
+      setItems(current =>
+        current.map(it =>
           it.id === item.id
             ? { ...it, bought: false, price: null, claimedBy: null }
             : it
@@ -267,22 +269,29 @@ export default function EventDetailScreen({ route, navigation }) {
     }
   };
 
-  const handlePriceInputChange = (text) => {
-    // Only allow numbers and one decimal point
+  const handlePriceInputChange = text => {
     const numericRegex = /^\d*\.?\d*$/;
     if (text === '' || numericRegex.test(text)) {
       setPriceInput(text);
     }
   };
 
-  const handleEditPrice = (item) => {
+  const handleEditPrice = item => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     setEditingPriceItemId(item.id);
     setEditingPriceValue(item.price || '');
   };
 
-  const handleSavePrice = (itemId) => {
-    setItems((currentItems) =>
-      currentItems.map((item) =>
+  const handleSavePrice = itemId => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
+    setItems(currentItems =>
+      currentItems.map(item =>
         item.id === itemId
           ? { ...item, price: editingPriceValue || null }
           : item
@@ -292,8 +301,7 @@ export default function EventDetailScreen({ route, navigation }) {
     setEditingPriceValue('');
   };
 
-  const handlePriceEditChange = (text) => {
-    // Only allow numbers and one decimal point
+  const handlePriceEditChange = text => {
     const numericRegex = /^\d*\.?\d*$/;
     if (text === '' || numericRegex.test(text)) {
       setEditingPriceValue(text);
@@ -301,15 +309,19 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const handleBuyConfirm = () => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     if (selectedItem) {
-      setItems((currentItems) =>
-        currentItems.map((item) =>
+      setItems(currentItems =>
+        currentItems.map(item =>
           item.id === selectedItem.id
             ? {
                 ...item,
                 bought: true,
                 price: priceInput,
-                claimedBy: 'Me', // show profile bubble
+                claimedBy: 'Me',
               }
             : item
         )
@@ -321,16 +333,24 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   // ---- Edit / delete item ----
-  const openEditModal = (item) => {
+  const openEditModal = item => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     setEditingItem(item);
     setEditText(item.name);
     setEditModalVisible(true);
   };
 
   const handleSaveEdit = () => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     if (!editingItem) return;
-    setItems((current) =>
-      current.map((it) =>
+    setItems(current =>
+      current.map(it =>
         it.id === editingItem.id ? { ...it, name: editText } : it
       )
     );
@@ -340,38 +360,46 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const handleDeleteItem = () => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
     if (!editingItem) return;
-    setItems((current) => current.filter((it) => it.id !== editingItem.id));
+    setItems(current => current.filter(it => it.id !== editingItem.id));
     setEditModalVisible(false);
     setEditingItem(null);
     setEditText('');
   };
 
   const handleGenerateSuggestions = async () => {
-    if (!description.trim()) return;  // don't call if empty
-  
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
+    if (!description.trim()) return;
+
     try {
       setIsGenerating(true);
-  
+
       const res = await fetch(`${BASE_URL}/api/suggestions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          description,                 // use user input
-          pastItems: items.map((it) => it.name),
+          description,
+          pastItems: items.map(it => it.name),
         }),
       });
-  
+
       if (!res.ok) throw new Error('Bad response');
-  
-      const data = await res.json(); // { suggestions: string[] }
-  
+
+      const data = await res.json();
+
       const mapped = (data.suggestions || []).map((name, idx) => ({
         id: `ai-${Date.now()}-${idx}`,
         name,
         selected: false,
       }));
-  
+
       setSuggestions(mapped);
     } catch (e) {
       console.error(e);
@@ -381,19 +409,25 @@ export default function EventDetailScreen({ route, navigation }) {
     }
   };
 
-  const toggleSuggestion = (id) => {
-    setSuggestions((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...s, selected: !s.selected } : s
-      )
+  const toggleSuggestion = id => {
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
+    setSuggestions(prev =>
+      prev.map(s => (s.id === id ? { ...s, selected: !s.selected } : s))
     );
   };
 
   const addSelectedSuggestions = () => {
-    const selected = suggestions.filter((s) => s.selected);
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
+    }
+    const selected = suggestions.filter(s => s.selected);
     if (selected.length === 0) return;
 
-    const newItems = selected.map((s) => ({
+    const newItems = selected.map(s => ({
       id: Date.now() + Math.random(),
       name: s.name,
       urgent: false,
@@ -402,10 +436,8 @@ export default function EventDetailScreen({ route, navigation }) {
       price: null,
     }));
 
-    setItems((current) => [...current, ...newItems]);
-
-    // reset selection & collapse list
-    setSuggestions((prev) => prev.map((s) => ({ ...s, selected: false })));
+    setItems(current => [...current, ...newItems]);
+    setSuggestions(prev => prev.map(s => ({ ...s, selected: false })));
     setAiModalVisible(false);
   };
 
@@ -415,7 +447,7 @@ export default function EventDetailScreen({ route, navigation }) {
     <View key={item.id} style={detailStyles.listItemRow}>
       {/* Checkbox (claim / undo) */}
       <TouchableOpacity
-        onPress={() => handleToggleBought(item)}
+        onPress={() => (isReadOnly ? showArchivedAlert() : handleToggleBought(item))}
         style={{ justifyContent: 'center', alignItems: 'center' }}
       >
         {item.bought ? (
@@ -445,10 +477,25 @@ export default function EventDetailScreen({ route, navigation }) {
       {/* Right-side icons */}
       <View style={detailStyles.iconGroup}>
         {/* Price for recent items - editable */}
-        {!isActiveList && (
-          editingPriceItemId === item.id ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
-              <Text style={{ fontFamily: fonts.bold, color: colors.text, fontSize: 16, marginRight: 2 }}>$</Text>
+        {!isActiveList &&
+          (editingPriceItemId === item.id ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginRight: 10,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: fonts.bold,
+                  color: colors.text,
+                  fontSize: 16,
+                  marginRight: 2,
+                }}
+              >
+                $
+              </Text>
               <TextInput
                 style={{
                   fontFamily: fonts.bold,
@@ -467,10 +514,16 @@ export default function EventDetailScreen({ route, navigation }) {
                 onSubmitEditing={() => handleSavePrice(item.id)}
                 placeholder="0.00"
                 placeholderTextColor={colors.modalPlaceholder}
+                editable={!isReadOnly}
+                onFocus={isReadOnly ? showArchivedAlert : undefined}
               />
             </View>
           ) : (
-            <TouchableOpacity onPress={() => handleEditPrice(item)}>
+            <TouchableOpacity
+              onPress={() =>
+                isReadOnly ? showArchivedAlert() : handleEditPrice(item)
+              }
+            >
               <Text
                 style={{
                   marginRight: 10,
@@ -482,13 +535,16 @@ export default function EventDetailScreen({ route, navigation }) {
                 ${item.price || '0.00'}
               </Text>
             </TouchableOpacity>
-          )
-        )}
+          ))}
 
         {/* Urgency + Claim + Edit only on active list */}
         {isActiveList && (
           <>
-            <TouchableOpacity onPress={() => toggleItemUrgency(item.id)}>
+            <TouchableOpacity
+              onPress={() =>
+                isReadOnly ? showArchivedAlert() : toggleItemUrgency(item.id)
+              }
+            >
               {item.urgent ? (
                 <View style={detailStyles.urgentIcon}>
                   <Text style={detailStyles.exclamation}>!</Text>
@@ -503,7 +559,11 @@ export default function EventDetailScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => toggleItemClaim(item.id)}>
+            <TouchableOpacity
+              onPress={() =>
+                isReadOnly ? showArchivedAlert() : toggleItemClaim(item.id)
+              }
+            >
               {item.claimedBy === 'Me' ? (
                 <View style={detailStyles.avatarSmallSelected}>
                   <Text style={detailStyles.avatarTextSmall}>Me</Text>
@@ -518,7 +578,11 @@ export default function EventDetailScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => openEditModal(item)}>
+            <TouchableOpacity
+              onPress={() =>
+                isReadOnly ? showArchivedAlert() : openEditModal(item)
+              }
+            >
               <View style={detailStyles.editIconCircle}>
                 <FontAwesome5 name="pen" size={12} color={colors.text} />
               </View>
@@ -526,10 +590,7 @@ export default function EventDetailScreen({ route, navigation }) {
           </>
         )}
 
-        {/* Avatar / claimed indicator 
-            - Only show on Recently Bought list
-            - No extra circle on active list
-        */}
+        {/* Avatar / claimed indicator – only on Recently Bought list */}
         {!isActiveList && item.claimedBy === 'Me' && (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>Me</Text>
@@ -541,8 +602,7 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const renderListTab = () => (
     <View style={detailStyles.listContainer}>
-      {/* ACTIVE ITEMS */}
-      {activeItems.map((item) => renderItemRow(item, true))}
+      {activeItems.map(item => renderItemRow(item, true))}
 
       {/* ADD ITEM ROW */}
       <View style={detailStyles.addItemRow}>
@@ -554,12 +614,23 @@ export default function EventDetailScreen({ route, navigation }) {
           placeholder="New Item..."
           placeholderTextColor={colors.modalPlaceholder}
           value={newItemText}
-          onChangeText={setNewItemText}
+          onChangeText={text => {
+            if (isReadOnly) {
+              showArchivedAlert();
+            } else {
+              setNewItemText(text);
+            }
+          }}
           onSubmitEditing={handleAddItem}
+          editable={!isReadOnly}
+          onFocus={isReadOnly ? showArchivedAlert : undefined}
         />
         <View style={detailStyles.iconGroup}>
-          {/* Urgent toggle */}
-          <TouchableOpacity onPress={() => setNewItemUrgent(!newItemUrgent)}>
+          <TouchableOpacity
+            onPress={() =>
+              isReadOnly ? showArchivedAlert() : setNewItemUrgent(!newItemUrgent)
+            }
+          >
             {newItemUrgent ? (
               <View style={detailStyles.urgentIcon}>
                 <Text style={detailStyles.exclamation}>!</Text>
@@ -574,17 +645,18 @@ export default function EventDetailScreen({ route, navigation }) {
             )}
           </TouchableOpacity>
 
-          {/* AI icon button */}
           <TouchableOpacity
             style={detailStyles.aiIconButton}
-            onPress={() => setAiModalVisible(true)}
+            onPress={() =>
+              isReadOnly ? showArchivedAlert() : setAiModalVisible(true)
+            }
           >
             <FontAwesome5 name="magic" size={14} color={colors.text} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* RECENTLY BOUGHT TOGGLE */}
+      {/* RECENTLY BOUGHT TOGGLE (view-only, allowed) */}
       <TouchableOpacity
         style={detailStyles.recentlyBoughtLink}
         onPress={() => setShowRecent(!showRecent)}
@@ -600,40 +672,62 @@ export default function EventDetailScreen({ route, navigation }) {
         />
       </TouchableOpacity>
 
-      {showRecent && recentItems.map((item) => renderItemRow(item, false))}
+      {showRecent && recentItems.map(item => renderItemRow(item, false))}
 
       <View style={{ height: 50 }} />
     </View>
   );
 
   const renderSplitTab = () => {
-    // Get first letter of name for avatar
-    const getInitial = (name) => name.charAt(0).toUpperCase();
-    
-    // If no transactions, show summary
+    const getInitial = name => name.charAt(0).toUpperCase();
+
     if (splitData.transactions.length === 0) {
       return (
         <View style={detailStyles.splitCenterContainer}>
           {parseFloat(splitData.totalSpent) === 0 ? (
-            <>
-              <Text style={[detailStyles.amountText, { fontSize: 14, color: '#999' }]}>
-                {hasSettled ? 'All cleared up' : 'No items purchased yet'}
-              </Text>
-            </>
+            <Text
+              style={[
+                detailStyles.amountText,
+                { fontSize: 14, color: '#999' },
+              ]}
+            >
+              {hasSettled ? 'All cleared up' : 'No items purchased yet'}
+            </Text>
           ) : (
             <>
-              <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 16 }]}>
+              <Text
+                style={[
+                  detailStyles.amountText,
+                  { marginBottom: 20, fontSize: 16 },
+                ]}
+              >
                 Total Spent: ${splitData.totalSpent}
               </Text>
-              <Text style={[detailStyles.amountText, { marginBottom: 20, fontSize: 14, color: colors.accent }]}>
+              <Text
+                style={[
+                  detailStyles.amountText,
+                  {
+                    marginBottom: 20,
+                    fontSize: 14,
+                    color: colors.accent,
+                  },
+                ]}
+              >
                 Average per person: ${splitData.averagePerPerson}
               </Text>
-              <Text style={[detailStyles.amountText, { fontSize: 14, color: '#999' }]}>
+              <Text
+                style={[
+                  detailStyles.amountText,
+                  { fontSize: 14, color: '#999' },
+                ]}
+              >
                 All settled up!
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[detailStyles.settleButton, { marginTop: 30 }]}
-                onPress={handleSettle}
+                onPress={() =>
+                  isReadOnly ? showArchivedAlert() : handleSettle()
+                }
               >
                 <Text style={detailStyles.settleButtonText}>Settle</Text>
               </TouchableOpacity>
@@ -642,11 +736,15 @@ export default function EventDetailScreen({ route, navigation }) {
         </View>
       );
     }
-    
-    // Render transactions
+
     return (
       <View style={detailStyles.splitCenterContainer}>
-        <Text style={[detailStyles.amountText, { marginBottom: 30, fontSize: 16 }]}>
+        <Text
+          style={[
+            detailStyles.amountText,
+            { marginBottom: 30, fontSize: 16 },
+          ]}
+        >
           Total Spent: ${splitData.totalSpent}
         </Text>
         {splitData.transactions.map((transaction, index) => (
@@ -657,7 +755,9 @@ export default function EventDetailScreen({ route, navigation }) {
               </Text>
             </View>
             <View style={detailStyles.arrowContainer}>
-              <Text style={detailStyles.amountText}>${transaction.amount}</Text>
+              <Text style={detailStyles.amountText}>
+                ${transaction.amount}
+              </Text>
               <View style={detailStyles.arrowLine} />
               <View style={detailStyles.arrowHead} />
             </View>
@@ -668,9 +768,11 @@ export default function EventDetailScreen({ route, navigation }) {
             </View>
           </View>
         ))}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[detailStyles.settleButton, { marginTop: 30 }]}
-          onPress={handleSettle}
+          onPress={() =>
+            isReadOnly ? showArchivedAlert() : handleSettle()
+          }
         >
           <Text style={detailStyles.settleButtonText}>Settle</Text>
         </TouchableOpacity>
@@ -680,7 +782,6 @@ export default function EventDetailScreen({ route, navigation }) {
 
   return (
     <View style={globalStyles.container}>
-      {/* Status bar spacer */}
       <View
         style={{
           height: Constants.statusBarHeight,
@@ -689,17 +790,19 @@ export default function EventDetailScreen({ route, navigation }) {
       />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-      <View style={detailStyles.headerRow}>
-        {/* LEFT: Back Button */}
-        <TouchableOpacity onPress={() => navigation.goBack()} style={detailStyles.headerSide}>
-          <FontAwesome5 name="chevron-left" size={22} color={colors.text} />
-        </TouchableOpacity>
+        <View style={detailStyles.headerRow}>
+          {/* Back is still allowed */}
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={detailStyles.headerSide}
+          >
+            <FontAwesome5 name="chevron-left" size={22} color={colors.text} />
+          </TouchableOpacity>
 
-        {/* RIGHT: Title */}
-        <View style={detailStyles.headerRight}>
-          <Text style={detailStyles.titleText}>{eventTitle}</Text>
+          <View style={detailStyles.headerRight}>
+            <Text style={detailStyles.titleText}>{eventTitle}</Text>
+          </View>
         </View>
-      </View>
 
         <View style={detailStyles.participantsRow}>
           <FontAwesome5
@@ -709,16 +812,25 @@ export default function EventDetailScreen({ route, navigation }) {
             style={{ marginRight: 8 }}
           />
           {participants.map((participant, index) => (
-            <View 
+            <View
               key={index}
-              style={participant === 'Me' ? detailStyles.avatarSmallSelected : detailStyles.avatarSmall}
+              style={
+                participant === 'Me'
+                  ? detailStyles.avatarSmallSelected
+                  : detailStyles.avatarSmall
+              }
             >
               <Text style={detailStyles.avatarTextSmall}>
-                {participant === 'Me' ? 'Me' : participant.charAt(0).toUpperCase()}
+                {participant === 'Me'
+                  ? 'Me'
+                  : participant.charAt(0).toUpperCase()}
               </Text>
             </View>
           ))}
-          <TouchableOpacity style={detailStyles.addParticipant}>
+          <TouchableOpacity
+            style={detailStyles.addParticipant}
+            onPress={isReadOnly ? showArchivedAlert : undefined}
+          >
             <FontAwesome5 name="plus" size={10} color={colors.text} />
           </TouchableOpacity>
         </View>
@@ -762,7 +874,7 @@ export default function EventDetailScreen({ route, navigation }) {
       <Modal
         animationType="fade"
         transparent={true}
-        visible={buyModalVisible}
+        visible={buyModalVisible && !isReadOnly}
         onRequestClose={() => setBuyModalVisible(false)}
       >
         <KeyboardAvoidingView
@@ -822,7 +934,7 @@ export default function EventDetailScreen({ route, navigation }) {
       <Modal
         animationType="fade"
         transparent={true}
-        visible={aiModalVisible}
+        visible={aiModalVisible && !isReadOnly}
         onRequestClose={closeAiModal}
       >
         <TouchableWithoutFeedback onPress={closeAiModal}>
@@ -831,9 +943,12 @@ export default function EventDetailScreen({ route, navigation }) {
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
             >
-              <TouchableWithoutFeedback onPress={() => { /* swallow taps inside card */ }}>
+              <TouchableWithoutFeedback
+                onPress={() => {
+                  /* swallow taps inside card */
+                }}
+              >
                 <View style={detailStyles.aiModalContainer}>
-                  {/* top-right close button */}
                   <TouchableOpacity
                     style={detailStyles.aiCloseButton}
                     onPress={closeAiModal}
@@ -841,7 +956,9 @@ export default function EventDetailScreen({ route, navigation }) {
                     <FontAwesome5 name="times" size={16} color="#fff" />
                   </TouchableOpacity>
 
-                  <Text style={detailStyles.aiTitle}>Describe your gathering</Text>
+                  <Text style={detailStyles.aiTitle}>
+                    Describe your gathering
+                  </Text>
 
                   <TextInput
                     style={detailStyles.aiDescriptionInput}
@@ -863,13 +980,12 @@ export default function EventDetailScreen({ route, navigation }) {
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Suggestions + footer scroll INSIDE the card */}
                   {suggestions.length > 0 && (
                     <ScrollView
                       style={detailStyles.aiSuggestionsScroll}
                       contentContainerStyle={{ paddingBottom: 16 }}
                     >
-                      {suggestions.map((s) => (
+                      {suggestions.map(s => (
                         <TouchableOpacity
                           key={s.id}
                           style={detailStyles.aiSuggestionRow}
@@ -881,7 +997,9 @@ export default function EventDetailScreen({ route, navigation }) {
                               s.selected && detailStyles.aiCheckboxSelected,
                             ]}
                           />
-                          <Text style={detailStyles.aiSuggestionText}>{s.name}</Text>
+                          <Text style={detailStyles.aiSuggestionText}>
+                            {s.name}
+                          </Text>
                         </TouchableOpacity>
                       ))}
 
@@ -890,7 +1008,9 @@ export default function EventDetailScreen({ route, navigation }) {
                           style={detailStyles.aiAddButton}
                           onPress={addSelectedSuggestions}
                         >
-                          <Text style={detailStyles.aiAddButtonText}>Add selected to list</Text>
+                          <Text style={detailStyles.aiAddButtonText}>
+                            Add selected to list
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </ScrollView>
@@ -902,12 +1022,11 @@ export default function EventDetailScreen({ route, navigation }) {
         </TouchableWithoutFeedback>
       </Modal>
 
-
       {/* ---- EDIT ITEM MODAL ---- */}
       <Modal
         animationType="fade"
         transparent={true}
-        visible={editModalVisible}
+        visible={editModalVisible && !isReadOnly}
         onRequestClose={() => setEditModalVisible(false)}
       >
         <KeyboardAvoidingView
@@ -971,3 +1090,4 @@ const styles = {
     borderLeftColor: colors.text,
   },
 };
+

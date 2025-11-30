@@ -76,6 +76,24 @@ export const homeStyles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 2,
   },
+  
+  archiveBubble: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
 
   // --- Modal Styles ---
   modalContainer: {

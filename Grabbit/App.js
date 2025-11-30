@@ -18,6 +18,7 @@ import {
 
 import HomeStackNavigator from './HomeStackNavigator'; 
 import ProfileScreen from './ProfileScreen';
+import { EventProvider } from './EventContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -25,9 +26,7 @@ const Tab = createBottomTabNavigator();
 
 const getTabBarVisibility = (route) => {
   const routeName = getFocusedRouteNameFromRoute(route);
-  const hideOnScreens = []; // Array is now empty
-  // If you had other full-screen modals you wanted to hide the tab bar on, 
-  // you would list them here, but EventDetail is no longer one of them.
+  const hideOnScreens = []; 
   if (hideOnScreens.includes(routeName)) return 'none'; 
   return 'flex'; 
 };
@@ -53,32 +52,33 @@ export default function App() {
   if (!fontsLoaded) return null; 
 
   return (
-    // Wrap everything in SafeAreaProvider
-    <SafeAreaProvider> 
-      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <NavigationContainer>
-          <Tab.Navigator
-            screenOptions={({ route }) => ({
-              headerTitleAlign: 'center',
-              tabBarActiveTintColor: '#e55347',
-              tabBarInactiveTintColor: '#34495e',
-              tabBarStyle: { 
-                backgroundColor: '#e8e5dc',
-                // This function now returns 'flex' for EventDetail
-                display: getTabBarVisibility(route), 
-              },
-              tabBarIcon: ({ color, size }) => {
-                const map = { Home: 'home', Me: 'user-alt', Realtime: 'bolt' };
-                return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
-              },
-              headerShown: route.name !== 'Home' && route.name !== 'Me',
-            })}
-          >
-            <Tab.Screen name="Home" component={HomeStackNavigator} />
-            <Tab.Screen name="Me" component={ProfileScreen} />
-          </Tab.Navigator>
-        </NavigationContainer>
-      </View>
+    <SafeAreaProvider>
+      {/* ⬇️ wrap everything that needs events in EventProvider */}
+      <EventProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          <NavigationContainer>
+            <Tab.Navigator
+              screenOptions={({ route }) => ({
+                headerTitleAlign: 'center',
+                tabBarActiveTintColor: '#e55347',
+                tabBarInactiveTintColor: '#34495e',
+                tabBarStyle: { 
+                  backgroundColor: '#e8e5dc',
+                  display: getTabBarVisibility(route), 
+                },
+                tabBarIcon: ({ color, size }) => {
+                  const map = { Home: 'home', Me: 'user-alt', Realtime: 'bolt' };
+                  return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
+                },
+                headerShown: route.name !== 'Home' && route.name !== 'Me',
+              })}
+            >
+              <Tab.Screen name="Home" component={HomeStackNavigator} />
+              <Tab.Screen name="Me" component={ProfileScreen} />
+            </Tab.Navigator>
+          </NavigationContainer>
+        </View>
+      </EventProvider>
     </SafeAreaProvider>
   );
 }
