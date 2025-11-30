@@ -108,7 +108,6 @@ export default function HomeScreen({ navigation }) {
         navigation={navigation}
         onUpdateItems={handleUpdateItems}
         onUpdateParticipants={handleUpdateParticipants}
-        // <<< this drives the friend list in the “Select Friends” screen
         friends={friends}
       />
 

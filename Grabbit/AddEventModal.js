@@ -12,6 +12,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 
 import { globalStyles, colors } from './styles/styles.js';
 import { homeStyles } from './styles/homeStyles.js';
+import { detailStyles } from './styles/eventDetailStyles.js';
 
 // Determine the correct BASE_URL based on platform
 const getBaseUrl = () => {
@@ -270,27 +271,48 @@ export default function AddEventModal({
 
             {/* Participants row */}
             <View style={[homeStyles.participantsRow, { marginBottom: 16 }]}>
-              {/* Make the icon its own “chip” so it lines up nicely */}
+              {/* Make the icon its own "chip" so it lines up nicely */}
               <View style={homeStyles.participantIconCircle}>
                 <FontAwesome5 name="users" size={18} color={colors.text} />
               </View>
 
-              {/* Show Me plus any selected friends */}
+              {/* Show Me plus any selected friends as round avatars with single letter */}
               {selectedParticipants.map((participant, index) => (
                 <View
                   key={`${participant}-${index}`}
-                  style={homeStyles.participantButton}
+                  style={[
+                    {
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor:
+                        participant === 'Me' ? '#A89F91' : '#D6CFC4',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    },
+                  ]}
                 >
-                  <Text style={homeStyles.participantButtonText}>{participant}</Text>
+                  <Text style={detailStyles.avatarTextSmall}>
+                    {participant === 'Me'
+                      ? 'Me'
+                      : participant.charAt(0).toUpperCase()}
+                  </Text>
                 </View>
               ))}
 
               {/* Plus chip – same size as participant chips */}
               <TouchableOpacity
-                style={homeStyles.participantButton}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: '#D6CFC4',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
                 onPress={openFriendsModal}
               >
-                <FontAwesome5 name="plus" size={18} color={colors.text} />
+                <FontAwesome5 name="plus" size={14} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -355,7 +377,12 @@ export default function AddEventModal({
                 <Text style={homeStyles.loadingText}>Thinking...</Text>
               </View>
             ) : (
-              <View style={homeStyles.suggestionsGrid}>
+              <ScrollView
+                style={homeStyles.suggestionsScrollView}
+                contentContainerStyle={homeStyles.suggestionsGrid}
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+              >
                 {aiSuggestions.map((item) => {
                   const isSelected = selectedItems.some(
                     (selected) => selected.id === item.id
@@ -381,7 +408,7 @@ export default function AddEventModal({
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
             )}
           </View>
         )}

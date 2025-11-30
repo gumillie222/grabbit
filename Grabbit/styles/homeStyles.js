@@ -241,6 +241,10 @@ export const homeStyles = StyleSheet.create({
   connectionIndicatorIcon: {
     marginLeft: 8,
   },
+  suggestionsScrollView: {
+    maxHeight: 200,
+    width: '100%',
+  },
   suggestionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

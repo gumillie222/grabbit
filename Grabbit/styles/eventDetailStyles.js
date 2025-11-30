@@ -425,6 +425,8 @@ export const detailStyles = StyleSheet.create({
   },
   aiSuggestionsScroll: {
     marginTop: 8,
+    maxHeight: 250,
+    flexGrow: 0,
   },
   aiCheckbox: {
     width: 18,

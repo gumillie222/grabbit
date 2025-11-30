@@ -1045,6 +1045,8 @@ export default function EventDetailScreen({ route, navigation }) {
                     <ScrollView
                       style={detailStyles.aiSuggestionsScroll}
                       contentContainerStyle={{ paddingBottom: 16 }}
+                      showsVerticalScrollIndicator={true}
+                      nestedScrollEnabled={true}
                     >
                       {suggestions.map(s => (
                         <TouchableOpacity

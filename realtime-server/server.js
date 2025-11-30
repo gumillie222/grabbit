@@ -44,9 +44,16 @@ io.on("connection", (socket) => {
 });
 
 // --- NEW AI suggestion endpoint ---
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Only initialize OpenAI client if API key is provided
+let client = null;
+if (process.env.OPENAI_API_KEY) {
+  client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  console.log("[AI] OpenAI client initialized");
+} else {
+  console.warn("[AI] WARNING: OPENAI_API_KEY not set. AI suggestions will be disabled.");
+}
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
@@ -61,6 +68,14 @@ app.post("/api/suggestions", async (req, res) => {
 
   console.log("[API] POST /api/suggestions called");
   console.log("[API] Request body:", JSON.stringify(req.body));
+
+  // Check if OpenAI client is available
+  if (!client) {
+    return res.status(503).json({
+      error: "AI suggestions are not available. OPENAI_API_KEY is not configured.",
+      suggestions: []
+    });
+  }
 
   try {
     const { description, pastItems = [] } = req.body;
@@ -79,7 +94,10 @@ app.post("/api/suggestions", async (req, res) => {
           "You help users build shopping lists for gatherings. " +
           "Given their description and items they already have, " +
           "suggest 8-12 other useful items. " +
-          "Return only JSON with a `suggestions` array.",
+          "CRITICAL RULES: " +
+          "Each suggestion must be a SINGLE, SPECIFIC item - never use 'OR', 'and/or', or list multiple items. " +
+          "Each suggestion should be one specific product/item (e.g., 'Paper Plates', 'Ice', 'Napkins', 'Chips'). " +
+          "Return only JSON with a `suggestions` array of strings.",
       },
       {
         role: "user",
@@ -103,8 +121,18 @@ Already have: ${pastItems.join(", ") || "(none)"}
       throw new Error("Model did not return a suggestions array");
     }
 
-    console.log(`[AI Response] Generated ${data.suggestions.length} suggestions`);
-    res.json({ suggestions: data.suggestions });
+    // Post-process suggestions to ensure each is at most 3 words
+    const processedSuggestions = data.suggestions.map(suggestion => {
+      if (typeof suggestion !== 'string') {
+        suggestion = String(suggestion);
+      }
+      const words = suggestion.trim().split(/\s+/);
+      // Take only first 3 words and join them
+      return words.slice(0, 3).join(' ');
+    }).filter(suggestion => suggestion.length > 0); // Remove empty suggestions
+
+    console.log(`[AI Response] Generated ${processedSuggestions.length} suggestions (truncated to max 3 words each)`);
+    res.json({ suggestions: processedSuggestions });
   } catch (err) {
     console.error("[ERROR] AI suggestion error:", err.message);
     console.error("[ERROR] Error stack:", err.stack);
