@@ -146,7 +146,7 @@ export const profileStyles = StyleSheet.create({
   },
   tabText: {
     fontSize: 16,
-    fontFamily: 'System',
+    fontFamily: fonts.regular,
     color: colors.text,
   },
   tabTextActive: {
@@ -163,12 +163,14 @@ export const profileStyles = StyleSheet.create({
   },
   sectionSubtitle: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#777',
     marginBottom: 10,
   },
   emptyText: {
     marginTop: 8,
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#888',
   },
 
@@ -193,11 +195,13 @@ export const profileStyles = StyleSheet.create({
   },
   addFriendTitle: {
     fontSize: 16,
+    fontFamily: fonts.regular,
     fontWeight: '600',
     color: colors.text,
   },
   addFriendSubtitle: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#777',
   },
   friendRow: {
@@ -215,16 +219,19 @@ export const profileStyles = StyleSheet.create({
     marginRight: 10,
   },
   friendAvatarText: {
+    fontFamily: fonts.regular,
     color: '#fff',
     fontWeight: '700',
   },
   friendName: {
     fontSize: 16,
+    fontFamily: fonts.regular,
     fontWeight: '600',
     color: colors.text,
   },
   friendSubText: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#777',
   },
 
@@ -240,12 +247,14 @@ export const profileStyles = StyleSheet.create({
   },
   archiveTitle: {
     fontSize: 16,
+    fontFamily: fonts.regular,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
   },
   archiveSubtitle: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#6e6e6e',
   },
   unarchiveBadge: {
@@ -277,6 +286,7 @@ export const profileStyles = StyleSheet.create({
   },
   archiveDetailTitle: {
     fontSize: 16,
+    fontFamily: fonts.regular,
     fontWeight: '600',
     color: colors.text,
     flex: 1,
@@ -288,6 +298,7 @@ export const profileStyles = StyleSheet.create({
   },
   archiveDetailLabel: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 2,
@@ -302,6 +313,7 @@ export const profileStyles = StyleSheet.create({
   },
   chipText: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: colors.text,
   },
   itemRow: {
@@ -318,15 +330,18 @@ export const profileStyles = StyleSheet.create({
   },
   itemText: {
     fontSize: 16,
+    fontFamily: fonts.regular,
     color: colors.text,
   },
   itemSubText: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#777',
   },
   archiveBanner: {
     marginTop: 4,
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#aa5a4a',
   },
 
@@ -346,6 +361,7 @@ export const profileStyles = StyleSheet.create({
   },
   friendModalTitle: {
     fontSize: 16,
+    fontFamily: fonts.regular,
     fontWeight: '600',
     color: colors.text,
   },
@@ -368,6 +384,7 @@ export const profileStyles = StyleSheet.create({
   },
   friendModalTabText: {
     fontSize: 16,
+    fontFamily: fonts.regular,
     color: '#6b5b4b',
   },
   friendModalTabTextActive: {
@@ -376,6 +393,7 @@ export const profileStyles = StyleSheet.create({
   },
   friendModalHint: {
     fontSize: 14,
+    fontFamily: fonts.regular,
     color: '#777',
     marginBottom: 6,
   },
@@ -385,6 +403,7 @@ export const profileStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 16,
+    fontFamily: fonts.regular,
     marginBottom: 8,
     color: colors.text,
   },
@@ -399,6 +418,7 @@ export const profileStyles = StyleSheet.create({
   friendModalPrimaryText: {
     color: '#fff',
     fontSize: 16,
+    fontFamily: fonts.regular,
     fontWeight: '600',
   },
   requestRow: {
