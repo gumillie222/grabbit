@@ -503,9 +503,45 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const confirmParticipantsSelection = () => {
-    setParticipants(['Me', ...tempParticipants]);
+    // New participant list: Me + whatever was selected
+    const newParticipants = ['Me', ...tempParticipants];
+  
+    // Update participants state
+    setParticipants(newParticipants);
+  
+    // Clean up all items so sharedBy/claimedBy never reference removed people
+    setItems(currentItems =>
+      currentItems.map(item => {
+        const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
+  
+        // Keep only sharers that are still in the event
+        const cleanedSharedBy = currentSharers.filter(name =>
+          newParticipants.includes(name)
+        );
+  
+        // If claimedBy has been removed, fall back to "Me"
+        let cleanedClaimedBy = item.claimedBy;
+        if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
+          cleanedClaimedBy = 'Me';
+        }
+  
+        return {
+          ...item,
+          sharedBy: cleanedSharedBy,
+          claimedBy: cleanedClaimedBy,
+        };
+      })
+    );
+  
+    // Also clean the current selection used in the buy modal
+    setBuySharedBy(prev => {
+      const filtered = prev.filter(name => newParticipants.includes(name));
+      return filtered.length ? filtered : ['Me'];
+    });
+  
     setParticipantsModalVisible(false);
   };
+  
 
   // --- SPENDING DETAILS (for detailed modal) ---
   const getSpendingPerPerson = () => {
