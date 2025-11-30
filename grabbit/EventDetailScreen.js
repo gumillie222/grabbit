@@ -18,7 +18,7 @@ import { globalStyles, colors, fonts } from './styles/styles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
 import { EventContext } from './EventContext';
 
-// Determine the correct BASE_URL based on platform
+// ---- BASE URL ----
 const getBaseUrl = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:4000';
@@ -29,7 +29,6 @@ const getBaseUrl = () => {
   }
   return 'http://localhost:4000';
 };
-
 const BASE_URL = getBaseUrl();
 
 export default function EventDetailScreen({ route, navigation }) {
@@ -62,16 +61,16 @@ export default function EventDetailScreen({ route, navigation }) {
   const [editingPriceItemId, setEditingPriceItemId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState('');
 
-  // sharers for buying items
+  // sharers when buying a new item
   const [buySharedBy, setBuySharedBy] = useState(['Me']);
   const [shareDropdownVisible, setShareDropdownVisible] = useState(false);
 
-  // editing sharedBy for recently bought items
-  const [editingSharedByItemId, setEditingSharedByItemId] = useState(null);
-  const [editSharedBy, setEditSharedBy] = useState([]);
-  const [editShareDropdownVisible, setEditShareDropdownVisible] = useState(false);
+  // editing sharedBy for items already in Recently Bought
+  const [sharedByEditItemId, setSharedByEditItemId] = useState(null);
+  const [sharedByDraft, setSharedByDraft] = useState([]);
+  const [sharedByModalVisible, setSharedByModalVisible] = useState(false);
 
-  const [items, setItems] = useState(() =>
+  const [items, setItems] = useState(
     initialItems && Array.isArray(initialItems)
       ? JSON.parse(JSON.stringify(initialItems))
       : []
@@ -85,15 +84,18 @@ export default function EventDetailScreen({ route, navigation }) {
     useState(false);
   const [tempParticipants, setTempParticipants] = useState([]);
 
+  // AI suggestions
   const [aiModalVisible, setAiModalVisible] = useState(false);
   const [description, setDescription] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // edit item name
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [editText, setEditText] = useState('');
 
+  // split details modal
   const [detailedModalVisible, setDetailedModalVisible] = useState(false);
 
   const showArchivedAlert = () =>
@@ -102,92 +104,86 @@ export default function EventDetailScreen({ route, navigation }) {
       'Archived events are not editable. Please recycle it back to home page if you want to make any changes.'
     );
 
-  // persist to context if not archived
+  // persist items
   useEffect(() => {
     if (isReadOnly) return;
     if (!eventId || !ctxUpdateItems) return;
     ctxUpdateItems(eventId, items);
   }, [items, eventId]);
-  
+
+  // persist participants
   useEffect(() => {
     if (isReadOnly) return;
     if (!eventId || !ctxUpdateParticipants) return;
     ctxUpdateParticipants(eventId, participants);
   }, [participants, eventId]);
 
-  const activeItems = items.filter(item => !item.bought);
-  const recentItems = items.filter(item => item.bought);
+  const activeItems = items.filter(i => !i.bought);
+  const recentItems = items.filter(i => i.bought);
 
-  // split logic (respects sharedBy if present)
+  // --- SPLIT LOGIC (uses sharedBy if present) ---
   const splitData = useMemo(() => {
     const balances = {};
     participants.forEach(p => (balances[p] = 0));
-  
-    const transactions = [];
-    
-    // Calculate total spent
-    const totalSpent = items
-      .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
-      .reduce((sum, item) => sum + parseFloat(item.price), 0);
-  
-    items
-      .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
-      .forEach(item => {
-        const price = parseFloat(item.price);
-        const sharers = Array.isArray(item.sharedBy) && item.sharedBy.length > 0
+
+    const bought = items.filter(
+      item => item.bought && item.price && parseFloat(item.price) > 0
+    );
+    const totalSpent = bought.reduce(
+      (sum, item) => sum + parseFloat(item.price),
+      0
+    );
+
+    bought.forEach(item => {
+      const price = parseFloat(item.price);
+      const sharers =
+        Array.isArray(item.sharedBy) && item.sharedBy.length > 0
           ? item.sharedBy
           : [item.claimedBy ?? 'Me'];
-  
-        const buyer = item.claimedBy ?? 'Me';
-        const payerCount = sharers.length;
-        const perPerson = price / payerCount;
-  
-        sharers.forEach(person => {
-          if (person === buyer) return; // buyer doesn't owe themselves
-          balances[person] -= perPerson;  // they owe money
-          balances[buyer] += perPerson;   // buyer receives money
-        });
+
+      const buyer = item.claimedBy ?? 'Me';
+      const perPerson = price / sharers.length;
+
+      sharers.forEach(person => {
+        if (person === buyer) return;
+        balances[person] -= perPerson; // they owe
+        balances[buyer] += perPerson; // buyer receives
       });
-  
-    // Now convert balances into transactions
+    });
+
     const debtors = [];
     const creditors = [];
-  
     Object.entries(balances).forEach(([person, bal]) => {
       if (bal < -0.01) debtors.push({ person, amount: -bal });
       if (bal > 0.01) creditors.push({ person, amount: bal });
     });
-  
+
     debtors.sort((a, b) => b.amount - a.amount);
     creditors.sort((a, b) => b.amount - a.amount);
-  
+
+    const transactions = [];
     let d = 0;
     let c = 0;
-  
+
     while (d < debtors.length && c < creditors.length) {
       const debtor = debtors[d];
       const creditor = creditors[c];
-  
       const amount = Math.min(debtor.amount, creditor.amount);
-  
+
       transactions.push({
         from: debtor.person,
         to: creditor.person,
         amount: amount.toFixed(2),
       });
-  
+
       debtor.amount -= amount;
       creditor.amount -= amount;
-  
+
       if (debtor.amount <= 0.01) d++;
       if (creditor.amount <= 0.01) c++;
     }
-    
-    return { 
-      balances, 
-      transactions, 
-      totalSpent: totalSpent.toFixed(2)
-    };
+
+    return { balances, transactions, totalSpent: totalSpent.toFixed(2) };
   }, [items, participants]);
 
   const closeAiModal = () => {
@@ -195,16 +191,15 @@ export default function EventDetailScreen({ route, navigation }) {
     setIsGenerating(false);
   };
 
-  // reset “settled” badge if new purchases appear
+  // reset settled flag if new bought items appear
   useEffect(() => {
-    const boughtItems = items.filter(
+    const bought = items.filter(
       item => item.bought && item.price && parseFloat(item.price) > 0
     );
-    if (boughtItems.length > 0) setHasSettled(false);
+    if (bought.length > 0) setHasSettled(false);
   }, [items]);
 
-  // --- item actions ---
-
+  // ---- ITEM ACTIONS ----
   const toggleItemUrgency = id => {
     if (isReadOnly) return showArchivedAlert();
     setItems(current =>
@@ -250,35 +245,37 @@ export default function EventDetailScreen({ route, navigation }) {
     setNewItemUrgent(false);
   };
 
-  const toggleSharePersonInDropdown = (name) => {
+  // --- SHARING PICKERS ---
+
+  const toggleSharePersonInDropdown = name => {
     setBuySharedBy(prev => {
       const isSelected = prev.includes(name);
-      let next = isSelected
-        ? prev.filter(n => n !== name)
-        : [...prev, name];
-  
-      // never allow empty – always at least Me
-      if (next.length === 0) next = ['Me'];
+      let next = isSelected ? prev.filter(n => n !== name) : [...prev, name];
+      if (next.length === 0) next = ['Me']; // never empty
       return next;
     });
   };
 
   const handleToggleBought = item => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
+
     if (!item.bought) {
       setSelectedItem(item);
       setPriceInput('');
-      setBuySharedBy([...participants]);        // default: shared by everyone
+      setBuySharedBy([...participants]); // default share: everyone
       setShareDropdownVisible(false);
       setBuyModalVisible(true);
     } else {
       setItems(current =>
         current.map(it =>
           it.id === item.id
-            ? { ...it, bought: false, price: null, claimedBy: null, sharedBy: undefined }
+            ? {
+                ...it,
+                bought: false,
+                price: null,
+                claimedBy: null,
+                sharedBy: undefined,
+              }
             : it
         )
       );
@@ -334,6 +331,49 @@ export default function EventDetailScreen({ route, navigation }) {
     setSelectedItem(null);
   };
 
+  // --- EDIT sharedBy FOR RECENT ITEMS (modal) ---
+
+  const startEditSharedBy = item => {
+    if (isReadOnly) return showArchivedAlert();
+    const currentSharers =
+      Array.isArray(item.sharedBy) && item.sharedBy.length > 0
+        ? item.sharedBy
+        : [item.claimedBy ?? 'Me'];
+    setSharedByDraft(currentSharers);
+    setSharedByEditItemId(item.id);
+    setSharedByModalVisible(true);
+  };
+
+  const toggleSharedByDraftPerson = name => {
+    setSharedByDraft(prev => {
+      const isSelected = prev.includes(name);
+      let next = isSelected ? prev.filter(n => n !== name) : [...prev, name];
+      if (next.length === 0) next = ['Me'];
+      return next;
+    });
+  };
+
+  const cancelEditSharedBy = () => {
+    setSharedByEditItemId(null);
+    setSharedByDraft([]);
+    setSharedByModalVisible(false);
+  };
+
+  const confirmEditSharedBy = () => {
+    if (sharedByEditItemId == null) return;
+    const cleaned = sharedByDraft.length ? sharedByDraft : ['Me'];
+    setItems(current =>
+      current.map(item =>
+        item.id === sharedByEditItemId ? { ...item, sharedBy: cleaned } : item
+      )
+    );
+    setSharedByEditItemId(null);
+    setSharedByDraft([]);
+    setSharedByModalVisible(false);
+  };
+
+  // --- EDIT ITEM NAME ---
+
   const openEditModal = item => {
     if (isReadOnly) return showArchivedAlert();
     setEditingItem(item);
@@ -363,7 +403,7 @@ export default function EventDetailScreen({ route, navigation }) {
     setEditText('');
   };
 
-  // --- AI suggestion actions ---
+  // --- AI SUGGESTIONS ---
 
   const handleGenerateSuggestions = async () => {
     if (isReadOnly) return showArchivedAlert();
@@ -372,9 +412,9 @@ export default function EventDetailScreen({ route, navigation }) {
     try {
       setIsGenerating(true);
       const url = `${BASE_URL}/api/suggestions`;
-      
+
       const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const fetchTimeout = setTimeout(() => controller.abort(), 10000);
 
       const res = await fetch(url, {
         method: 'POST',
@@ -391,9 +431,7 @@ export default function EventDetailScreen({ route, navigation }) {
 
       clearTimeout(fetchTimeout);
 
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
 
       const data = await res.json();
       const mapped = (data.suggestions || []).map((name, idx) => ({
@@ -404,11 +442,12 @@ export default function EventDetailScreen({ route, navigation }) {
       setSuggestions(mapped);
     } catch (e) {
       if (e.name === 'AbortError') {
-        console.log('[EventDetailScreen] AI request timeout');
-        Alert.alert("Request timed out. Please try again.");
+        Alert.alert('Request timed out. Please try again.');
       } else {
         console.error('[EventDetailScreen] AI request error:', e);
-        Alert.alert("Couldn't fetch AI suggestions. Please check your connection.");
+        Alert.alert(
+          "Couldn't fetch AI suggestions. Please check your connection."
+        );
       }
       setSuggestions([]);
     } finally {
@@ -443,7 +482,7 @@ export default function EventDetailScreen({ route, navigation }) {
     setAiModalVisible(false);
   };
 
-  // --- participants editor ---
+  // --- PARTICIPANTS EDITOR ---
 
   const openParticipantsModal = () => {
     if (isReadOnly) return showArchivedAlert();
@@ -468,34 +507,34 @@ export default function EventDetailScreen({ route, navigation }) {
     setParticipantsModalVisible(false);
   };
 
-  // --- shared-by editor ---
+  // --- SPENDING DETAILS (for detailed modal) ---
+  const getSpendingPerPerson = () => {
+    const spending = {};
+    participants.forEach(p => (spending[p] = 0));
 
-  const openShareModal = () => {
-    setTempSharedBy(buySharedBy.length ? buySharedBy : ['Me']);
-    setShareModalVisible(true);
+    items
+      .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
+      .forEach(item => {
+        const price = parseFloat(item.price);
+        const sharers =
+          Array.isArray(item.sharedBy) && item.sharedBy.length > 0
+            ? item.sharedBy
+            : [item.claimedBy ?? 'Me'];
+
+        const perPerson = price / sharers.length;
+        sharers.forEach(person => {
+          spending[person] = (spending[person] || 0) + perPerson;
+        });
+      });
+
+    return spending;
   };
 
-  const toggleSharePerson = name => {
-    setTempSharedBy(prev =>
-      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
-    );
-  };
-
-  const cancelShareSelection = () => {
-    setShareModalVisible(false);
-    setTempSharedBy(['Me']);
-  };
-
-  const confirmShareSelection = () => {
-    const cleaned = tempSharedBy.length ? tempSharedBy : ['Me'];
-    setBuySharedBy(cleaned);
-    setShareModalVisible(false);
-  };
-
-  // --- render helpers ---
+  // --- RENDER HELPERS ---
 
   const renderItemRow = (item, isActiveList) => (
     <View key={item.id} style={detailStyles.listItemRow}>
+      {/* checkbox */}
       <TouchableOpacity
         onPress={() =>
           isReadOnly ? showArchivedAlert() : handleToggleBought(item)
@@ -511,6 +550,7 @@ export default function EventDetailScreen({ route, navigation }) {
         )}
       </TouchableOpacity>
 
+      {/* name */}
       <View style={{ flex: 1 }}>
         <Text
           style={[
@@ -525,8 +565,9 @@ export default function EventDetailScreen({ route, navigation }) {
         </Text>
       </View>
 
+      {/* right icons */}
       <View style={detailStyles.iconGroup}>
-        {/* price on recent items */}
+        {/* price for recent items */}
         {!isActiveList &&
           (editingPriceItemId === item.id ? (
             <View
@@ -548,7 +589,7 @@ export default function EventDetailScreen({ route, navigation }) {
               </Text>
               <TextInput
                 style={{
-                  fontFamily: 'Nunito-Bold',
+                  fontFamily: fonts.bold,
                   color: colors.text,
                   fontSize: 16,
                   minWidth: 50,
@@ -587,7 +628,7 @@ export default function EventDetailScreen({ route, navigation }) {
             </TouchableOpacity>
           ))}
 
-        {/* active list controls */}
+        {/* active-list controls */}
         {isActiveList && (
           <>
             <TouchableOpacity
@@ -640,6 +681,7 @@ export default function EventDetailScreen({ route, navigation }) {
           </>
         )}
 
+        {/* buyer badge on recent list */}
         {!isActiveList && item.claimedBy === 'Me' && (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>Me</Text>
@@ -653,6 +695,7 @@ export default function EventDetailScreen({ route, navigation }) {
     <View style={detailStyles.listContainer}>
       {activeItems.map(item => renderItemRow(item, true))}
 
+      {/* NEW ITEM ROW */}
       <View style={detailStyles.addItemRow}>
         <TextInput
           style={detailStyles.newItemInput}
@@ -676,6 +719,7 @@ export default function EventDetailScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* RECENTLY BOUGHT HEADER */}
       <TouchableOpacity
         style={detailStyles.recentlyBoughtLink}
         onPress={() => setShowRecent(!showRecent)}
@@ -691,89 +735,120 @@ export default function EventDetailScreen({ route, navigation }) {
         />
       </TouchableOpacity>
 
-      {showRecent && recentItems.map(item => renderItemRow(item, false))}
+      {/* RECENTLY BOUGHT ITEMS WITH SIMPLE SECOND ROW */}
+      {showRecent &&
+        recentItems.map(item => {
+          const sharers =
+            Array.isArray(item.sharedBy) && item.sharedBy.length > 0
+              ? item.sharedBy
+              : [item.claimedBy ?? 'Me'];
+
+          return (
+            <View key={item.id} style={{ marginBottom: 12 }}>
+              {renderItemRow(item, false)}
+
+              {/* purchased item shared by row */}
+              <View
+                style={[
+                  detailStyles.sharedByInlineRow,
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 4,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    detailStyles.sharedByLabelInline,
+                    {
+                      fontFamily: fonts.regular,
+                      color: colors.text,
+                      marginRight: 8,
+                    },
+                  ]}
+                >
+                  shared by
+                </Text>
+
+                {sharers.map(name => (
+                  <View
+                    key={name}
+                    style={
+                      name === 'Me'
+                        ? [detailStyles.avatarSmallSelected, { marginRight: 6 }]
+                        : [detailStyles.avatarSmall, { marginRight: 6 }]
+                    }
+                  >
+                    <Text style={detailStyles.avatarTextSmall}>
+                      {name === 'Me' ? 'Me' : name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                ))}
+
+                <TouchableOpacity
+                  style={[detailStyles.shareEditButton, { marginLeft: 4 }]}
+                  onPress={() => startEditSharedBy(item)}
+                  activeOpacity={0.8}
+                >
+                  <FontAwesome5 name="pen" size={12} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          );
+        })}
 
       <View style={{ height: 50 }} />
     </View>
   );
 
-  // Calculate spending per person (includes items bought for them via sharedBy)
-  const getSpendingPerPerson = () => {
-    const spending = {};
-    participants.forEach(p => (spending[p] = 0));
-    
-    items
-      .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
-      .forEach(item => {
-        const price = parseFloat(item.price);
-        // Determine who shares the cost
-        const sharers = Array.isArray(item.sharedBy) && item.sharedBy.length > 0
-          ? item.sharedBy
-          : [item.claimedBy ?? 'Me'];
-        
-        // Split the cost equally among sharers
-        const perPerson = price / sharers.length;
-        
-        // Add each person's share to their spending
-        sharers.forEach(person => {
-          spending[person] = (spending[person] || 0) + perPerson;
-        });
-      });
-    
-    return spending;
-  };
-
+  // ---- SPLIT TAB ----
   const renderSplitTab = () => {
     const getInitial = name => name.charAt(0).toUpperCase();
-    
-    // Check if all balances are truly settled (within 0.01 of zero)
     const allBalancesSettled = Object.values(splitData.balances).every(
       bal => Math.abs(bal) < 0.01
     );
 
-    // If no transactions and all settled, show "All settled up!"
     if (splitData.transactions.length === 0 && allBalancesSettled) {
       return (
         <View style={detailStyles.splitCenterContainer}>
-          <>
-            <Text
-              style={[
-                detailStyles.amountText,
-                { marginBottom: 30, fontSize: 16 },
-              ]}
+          <Text
+            style={[
+              detailStyles.amountText,
+              { marginBottom: 30, fontSize: 16 },
+            ]}
+          >
+            Total Spent: ${splitData.totalSpent}
+          </Text>
+          <Text
+            style={[
+              detailStyles.amountText,
+              { fontSize: 14, color: '#999', marginBottom: 30 },
+            ]}
+          >
+            All settled up!
+          </Text>
+          <View style={detailStyles.splitButtonRow}>
+            <TouchableOpacity
+              style={detailStyles.detailedButton}
+              onPress={() => setDetailedModalVisible(true)}
             >
-              Total Spent: ${splitData.totalSpent}
-            </Text>
-            <Text
-              style={[
-                detailStyles.amountText,
-                { fontSize: 14, color: '#999', marginBottom: 30 },
-              ]}
+              <Text style={detailStyles.detailedButtonText}>Details</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={detailStyles.settleButton}
+              onPress={() =>
+                isReadOnly ? showArchivedAlert() : handleSettle()
+              }
             >
-              All settled up!
-            </Text>
-            <View style={detailStyles.splitButtonRow}>
-              <TouchableOpacity
-                style={detailStyles.detailedButton}
-                onPress={() => setDetailedModalVisible(true)}
-              >
-                <Text style={detailStyles.detailedButtonText}>Details</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={detailStyles.settleButton}
-                onPress={() =>
-                  isReadOnly ? showArchivedAlert() : handleSettle()
-                }
-              >
-                <Text style={detailStyles.settleButtonText}>Settle</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+              <Text style={detailStyles.settleButtonText}>Settle</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       );
     }
 
-    // Show transactions when there are outstanding balances
     return (
       <View style={detailStyles.splitCenterContainer}>
         <Text
@@ -823,7 +898,7 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   };
 
-  // friends list for participants picker
+  // effective friends for participants picker
   const effectiveFriends =
     contextFriends && contextFriends.length > 0
       ? contextFriends
@@ -831,6 +906,7 @@ export default function EventDetailScreen({ route, navigation }) {
           .filter(name => name !== 'Me')
           .map(name => ({ id: name, name }));
 
+  // ---- RENDER ----
   return (
     <View style={globalStyles.container}>
       <View
@@ -841,6 +917,7 @@ export default function EventDetailScreen({ route, navigation }) {
       />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* header */}
         <View style={detailStyles.headerRow}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -854,6 +931,7 @@ export default function EventDetailScreen({ route, navigation }) {
           </View>
         </View>
 
+        {/* participants */}
         <View style={detailStyles.participantsRow}>
           <FontAwesome5
             name="users"
@@ -885,6 +963,7 @@ export default function EventDetailScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* tabs */}
         <View style={detailStyles.tabContainer}>
           <TouchableOpacity onPress={() => setActiveTab('List')}>
             <Text
@@ -936,7 +1015,6 @@ export default function EventDetailScreen({ route, navigation }) {
               Buying: {selectedItem?.name}
             </Text>
 
-            {/* Price input */}
             <View style={detailStyles.priceInputRow}>
               <Text style={detailStyles.currencySymbol}>$</Text>
               <TextInput
@@ -950,7 +1028,6 @@ export default function EventDetailScreen({ route, navigation }) {
               />
             </View>
 
-            {/* shared by */}
             <Text style={detailStyles.sharedByLabel}>shared by</Text>
 
             <View>
@@ -970,7 +1047,6 @@ export default function EventDetailScreen({ route, navigation }) {
                   </View>
                 ))}
 
-                {/* edit button – toggles dropdown */}
                 <TouchableOpacity
                   style={detailStyles.shareEditButton}
                   activeOpacity={0.8}
@@ -982,7 +1058,6 @@ export default function EventDetailScreen({ route, navigation }) {
                 </TouchableOpacity>
               </View>
 
-              {/* dropdown under sharedByRow */}
               {shareDropdownVisible && (
                 <View style={detailStyles.shareDropdown}>
                   {participants.map(p => {
@@ -1022,7 +1097,6 @@ export default function EventDetailScreen({ route, navigation }) {
               )}
             </View>
 
-            {/* footer buttons */}
             <View style={detailStyles.modalActionRow}>
               <TouchableOpacity
                 onPress={() => {
@@ -1094,8 +1168,8 @@ export default function EventDetailScreen({ route, navigation }) {
                     <ScrollView
                       style={detailStyles.aiSuggestionsScroll}
                       contentContainerStyle={{ paddingBottom: 16 }}
-                      showsVerticalScrollIndicator={true}
-                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator
+                      nestedScrollEnabled
                     >
                       {suggestions.map(s => (
                         <TouchableOpacity
@@ -1246,6 +1320,83 @@ export default function EventDetailScreen({ route, navigation }) {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {/* SHARED-BY EDIT MODAL FOR RECENT ITEMS */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={sharedByModalVisible && !isReadOnly}
+        onRequestClose={cancelEditSharedBy}
+      >
+        <TouchableWithoutFeedback onPress={cancelEditSharedBy}>
+          <View style={globalStyles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={detailStyles.friendsModalContainer}>
+                <Text style={detailStyles.friendsModalTitle}>
+                  Who is sharing?
+                </Text>
+
+                <ScrollView
+                  style={detailStyles.friendsListContainer}
+                  contentContainerStyle={{ paddingBottom: 10 }}
+                >
+                  {participants.map(p => {
+                    const isSelected = sharedByDraft.includes(p);
+                    return (
+                      <TouchableOpacity
+                        key={p}
+                        style={[
+                          detailStyles.friendItem,
+                          isSelected && detailStyles.friendItemSelected,
+                        ]}
+                        onPress={() => toggleSharedByDraftPerson(p)}
+                      >
+                        <View
+                          style={[
+                            detailStyles.friendCheckbox,
+                            isSelected && detailStyles.friendCheckboxSelected,
+                          ]}
+                        >
+                          {isSelected && (
+                            <FontAwesome5
+                              name="check"
+                              size={10}
+                              color={colors.background}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            detailStyles.friendName,
+                            isSelected && detailStyles.friendNameSelected,
+                          ]}
+                        >
+                          {p}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={detailStyles.friendsModalButtonRow}>
+                  <TouchableOpacity
+                    style={detailStyles.modalCloseBtn}
+                    onPress={cancelEditSharedBy}
+                  >
+                    <FontAwesome5 name="times" size={16} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={detailStyles.modalCheckBtn}
+                    onPress={confirmEditSharedBy}
+                  >
+                    <FontAwesome5 name="check" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       {/* DETAILED SPENDING MODAL */}
       <Modal
         animationType="fade"
@@ -1253,11 +1404,15 @@ export default function EventDetailScreen({ route, navigation }) {
         visible={detailedModalVisible}
         onRequestClose={() => setDetailedModalVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setDetailedModalVisible(false)}>
+        <TouchableWithoutFeedback
+          onPress={() => setDetailedModalVisible(false)}
+        >
           <View style={globalStyles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={detailStyles.detailedModalContainer}>
-                <Text style={detailStyles.friendsModalTitle}>Spending Details</Text>
+                <Text style={detailStyles.friendsModalTitle}>
+                  Spending Details
+                </Text>
 
                 <ScrollView
                   style={detailStyles.friendsListContainer}
@@ -1267,13 +1422,20 @@ export default function EventDetailScreen({ route, navigation }) {
                     const spending = getSpendingPerPerson();
                     const amount = spending[person] || 0;
                     return (
-                      <View key={person} style={detailStyles.detailedItemRow}>
+                      <View
+                        key={person}
+                        style={detailStyles.detailedItemRow}
+                      >
                         <View style={detailStyles.avatarMedium}>
                           <Text style={detailStyles.avatarTextMedium}>
-                            {person === 'Me' ? 'Me' : person.charAt(0).toUpperCase()}
+                            {person === 'Me'
+                              ? 'Me'
+                              : person.charAt(0).toUpperCase()}
                           </Text>
                         </View>
-                        <Text style={detailStyles.detailedPersonName}>{person}</Text>
+                        <Text style={detailStyles.detailedPersonName}>
+                          {person}
+                        </Text>
                         <Text style={detailStyles.detailedAmount}>
                           ${amount.toFixed(2)}
                         </Text>
@@ -1328,3 +1490,4 @@ const styles = {
     borderLeftColor: colors.text,
   },
 };
+
