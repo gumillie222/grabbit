@@ -10,23 +10,34 @@ export const EventProvider = ({ children }) => {
     eventsData.map(e => ({
       ...e,
       isNew: false,
-      archived: false, // <-- explicitly mark as not archived
+      archived: false,
     }))
   );
 
   // Archived events (profile/archive tab)
   const [archivedEvents, setArchivedEvents] = useState([]);
 
+  // ---- SHARED FRIENDS LIST (used by Profile + AddEventModal) ----
+  const [friends, setFriends] = useState([
+    { id: 1, name: 'Amy',  phone: '555-111-2222', email: 'amy@example.com' },
+    { id: 2, name: 'Ben',  phone: '555-333-4444', email: 'ben@example.com' },
+    { id: 3, name: 'Chris', phone: '555-555-6666', email: 'chris@example.com' },
+  ]);
+
   // --- CRUD helpers ---
 
   const addEvent = (newEvent) => {
-    setEvents(currentEvents => [{
-      ...newEvent,
-      items: [],
-      participants: ['Me'],
-      isNew: true,
-      archived: false,    // new events always start as active
-    }, ...currentEvents]);
+    setEvents(currentEvents => [
+      {
+        ...newEvent,
+        // keep what caller passed, but provide safe defaults
+        items: newEvent.items ?? [],
+        participants: newEvent.participants ?? ['Me'],
+        isNew: true,
+        archived: false,
+      },
+      ...currentEvents,
+    ]);
   };
 
   const updateItems = (eventId, updatedItems) => {
@@ -93,7 +104,10 @@ export const EventProvider = ({ children }) => {
         deleteEvent,
         archiveEvent,
         unarchiveEvent,
-        getEventById,     // <-- export helper
+        getEventById,
+        // shared friends state
+        friends,
+        setFriends,
       }}
     >
       {children}

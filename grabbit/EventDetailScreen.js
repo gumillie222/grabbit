@@ -14,7 +14,7 @@ import {
 import Constants from 'expo-constants';
 import { FontAwesome5 } from '@expo/vector-icons';
 
-import { globalStyles, colors, fonts } from './styles/styles.js';
+import { globalStyles, colors } from './styles/styles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
 import { EventContext } from './EventContext';
 
@@ -35,19 +35,17 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const isReadOnly = !!isArchived;
 
-  // ---- Event context ----
   const eventCtx = useContext(EventContext);
   const ctxUpdateItems = eventCtx?.updateItems;
   const ctxUpdateParticipants = eventCtx?.updateParticipants;
+  const contextFriends = eventCtx?.friends || [];
 
   const [activeTab, setActiveTab] = useState('List');
   const [hasSettled, setHasSettled] = useState(false);
 
-  // Input States
   const [newItemText, setNewItemText] = useState('');
   const [newItemUrgent, setNewItemUrgent] = useState(false);
 
-  // Modal States
   const [buyModalVisible, setBuyModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [priceInput, setPriceInput] = useState('');
@@ -55,154 +53,146 @@ export default function EventDetailScreen({ route, navigation }) {
   const [editingPriceItemId, setEditingPriceItemId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState('');
 
-  // Items state - initialize once from route params
-  const [items, setItems] = useState(() => {
-    if (initialItems && Array.isArray(initialItems)) {
-      return JSON.parse(JSON.stringify(initialItems));
-    }
-    return [];
-  });
+  // sharers for buying items
+  const [buySharedBy, setBuySharedBy] = useState(['Me']);
+  const [shareDropdownVisible, setShareDropdownVisible] = useState(false);
 
-  // Participants state - initialize once from route params or default
-  const [participants, setParticipants] = useState(() => {
-    return initialParticipants || (isNew ? ['Me'] : ['Me', 'A']);
-  });
+  const [items, setItems] = useState(() =>
+    initialItems && Array.isArray(initialItems)
+      ? JSON.parse(JSON.stringify(initialItems))
+      : []
+  );
 
-  const showArchivedAlert = () => {
+  const [participants, setParticipants] = useState(
+    initialParticipants || (isNew ? ['Me'] : ['Me', 'A'])
+  );
+
+  const [participantsModalVisible, setParticipantsModalVisible] =
+    useState(false);
+  const [tempParticipants, setTempParticipants] = useState([]);
+
+  const [aiModalVisible, setAiModalVisible] = useState(false);
+  const [description, setDescription] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editText, setEditText] = useState('');
+
+  const showArchivedAlert = () =>
     Alert.alert(
       'Archived event',
       'Archived events are not editable. Please recycle it back to home page if you want to make any changes.'
     );
-  };
 
-  // Persist items changes via context (only if NOT archived)
+  // persist to context if not archived
   useEffect(() => {
     if (isReadOnly) return;
     if (!eventId || !ctxUpdateItems) return;
     ctxUpdateItems(eventId, items);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, eventId]);
-
-  // Persist participants changes via context (only if NOT archived)
+  
   useEffect(() => {
     if (isReadOnly) return;
     if (!eventId || !ctxUpdateParticipants) return;
     ctxUpdateParticipants(eventId, participants);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participants, eventId]);
 
   const activeItems = items.filter(item => !item.bought);
   const recentItems = items.filter(item => item.bought);
 
-  // Calculate split finances - automatically updates when items or participants change
+  // split logic (respects sharedBy if present)
   const splitData = useMemo(() => {
-    const boughtItems = items.filter(
-      item => item.bought && item.price && parseFloat(item.price) > 0
-    );
-
-    const spentByPerson = {};
-    participants.forEach(p => (spentByPerson[p] = 0));
-
-    boughtItems.forEach(item => {
-      if (item.claimedBy && spentByPerson.hasOwnProperty(item.claimedBy)) {
-        const price = parseFloat(item.price) || 0;
-        spentByPerson[item.claimedBy] += price;
-      }
-    });
-
-    const totalSpent = Object.values(spentByPerson).reduce(
-      (sum, amount) => sum + amount,
-      0
-    );
-
-    const averagePerPerson =
-      participants.length > 0 ? totalSpent / participants.length : 0;
-
     const balances = {};
-    participants.forEach(p => {
-      balances[p] = spentByPerson[p] - averagePerPerson;
-    });
-
-    const debts = [];
-    const credits = [];
-
-    participants.forEach(p => {
-      if (balances[p] < -0.01) {
-        debts.push({ person: p, amount: Math.abs(balances[p]) });
-      } else if (balances[p] > 0.01) {
-        credits.push({ person: p, amount: balances[p] });
-      }
-    });
-
-    debts.sort((a, b) => b.amount - a.amount);
-    credits.sort((a, b) => b.amount - a.amount);
-
+    participants.forEach(p => (balances[p] = 0));
+  
     const transactions = [];
-    let debtIndex = 0;
-    let creditIndex = 0;
-
-    while (debtIndex < debts.length && creditIndex < credits.length) {
-      const debt = debts[debtIndex];
-      const credit = credits[creditIndex];
-
-      const amount = Math.min(debt.amount, credit.amount);
+  
+    items
+      .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
+      .forEach(item => {
+        const price = parseFloat(item.price);
+        const sharers = Array.isArray(item.sharedBy) && item.sharedBy.length > 0
+          ? item.sharedBy
+          : [item.claimedBy ?? 'Me'];
+  
+        const buyer = item.claimedBy ?? 'Me';
+        const payerCount = sharers.length;
+        const perPerson = price / payerCount;
+  
+        sharers.forEach(person => {
+          if (person === buyer) return; // buyer doesn't owe themselves
+          balances[person] -= perPerson;  // they owe money
+          balances[buyer] += perPerson;   // buyer receives money
+        });
+      });
+  
+    // Now convert balances into transactions
+    const debtors = [];
+    const creditors = [];
+  
+    Object.entries(balances).forEach(([person, bal]) => {
+      if (bal < -0.01) debtors.push({ person, amount: -bal });
+      if (bal > 0.01) creditors.push({ person, amount: bal });
+    });
+  
+    debtors.sort((a, b) => b.amount - a.amount);
+    creditors.sort((a, b) => b.amount - a.amount);
+  
+    let d = 0;
+    let c = 0;
+  
+    while (d < debtors.length && c < creditors.length) {
+      const debtor = debtors[d];
+      const creditor = creditors[c];
+  
+      const amount = Math.min(debtor.amount, creditor.amount);
+  
       transactions.push({
-        from: debt.person,
-        to: credit.person,
+        from: debtor.person,
+        to: creditor.person,
         amount: amount.toFixed(2),
       });
-
-      debt.amount -= amount;
-      credit.amount -= amount;
-
-      if (debt.amount < 0.01) debtIndex++;
-      if (credit.amount < 0.01) creditIndex++;
+  
+      debtor.amount -= amount;
+      creditor.amount -= amount;
+  
+      if (debtor.amount <= 0.01) d++;
+      if (creditor.amount <= 0.01) c++;
     }
-
-    return {
-      totalSpent: totalSpent.toFixed(2),
-      averagePerPerson: averagePerPerson.toFixed(2),
-      transactions,
-      balances,
-    };
+  
+    return { balances, transactions };
   }, [items, participants]);
 
-  // ---- AI suggestions ----
-  const [aiModalVisible, setAiModalVisible] = useState(false);
-  const [description, setDescription] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [isGenerating, setIsGenerating] = useState(false);
   const closeAiModal = () => {
     setAiModalVisible(false);
     setIsGenerating(false);
   };
 
-  // ---- Edit item modal ----
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const [editText, setEditText] = useState('');
+  // reset “settled” badge if new purchases appear
+  useEffect(() => {
+    const boughtItems = items.filter(
+      item => item.bought && item.price && parseFloat(item.price) > 0
+    );
+    if (boughtItems.length > 0) setHasSettled(false);
+  }, [items]);
 
-  // --- Logic (all write operations guarded by isReadOnly) ---
+  // --- item actions ---
 
   const toggleItemUrgency = id => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
-    setItems(currentItems =>
-      currentItems.map(item =>
+    if (isReadOnly) return showArchivedAlert();
+    setItems(current =>
+      current.map(item =>
         item.id === id ? { ...item, urgent: !item.urgent } : item
       )
     );
   };
 
   const toggleItemClaim = id => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
-    setItems(currentItems =>
-      currentItems.map(item =>
+    if (isReadOnly) return showArchivedAlert();
+    setItems(current =>
+      current.map(item =>
         item.id === id
           ? { ...item, claimedBy: item.claimedBy === 'Me' ? null : 'Me' }
           : item
@@ -211,44 +201,43 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const handleSettle = () => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
-    setItems(currentItems => currentItems.filter(item => !item.bought));
+    if (isReadOnly) return showArchivedAlert();
+    setItems(current => current.filter(item => !item.bought));
     setHasSettled(true);
   };
 
-  // Reset settled state when items are bought again
-  useEffect(() => {
-    const boughtItems = items.filter(
-      item => item.bought && item.price && parseFloat(item.price) > 0
-    );
-    if (boughtItems.length > 0) {
-      setHasSettled(false);
-    }
-  }, [items]);
-
   const handleAddItem = () => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
-    if (newItemText.trim() === '') return;
-    const newItem = {
-      id: Date.now(),
-      name: newItemText,
-      urgent: newItemUrgent,
-      claimedBy: null,
-      bought: false,
-      price: null,
-    };
-    setItems([...items, newItem]);
+    if (isReadOnly) return showArchivedAlert();
+    if (!newItemText.trim()) return;
+    setItems(current => [
+      ...current,
+      {
+        id: Date.now(),
+        name: newItemText,
+        urgent: newItemUrgent,
+        claimedBy: null,
+        bought: false,
+        price: null,
+        sharedBy: [],
+      },
+    ]);
     setNewItemText('');
     setNewItemUrgent(false);
   };
 
-  // ---- Claim / un-claim via checkbox ----
+  const toggleSharePersonInDropdown = (name) => {
+    setBuySharedBy(prev => {
+      const isSelected = prev.includes(name);
+      let next = isSelected
+        ? prev.filter(n => n !== name)
+        : [...prev, name];
+  
+      // never allow empty – always at least Me
+      if (next.length === 0) next = ['Me'];
+      return next;
+    });
+  };
+
   const handleToggleBought = item => {
     if (isReadOnly) {
       showArchivedAlert();
@@ -257,12 +246,14 @@ export default function EventDetailScreen({ route, navigation }) {
     if (!item.bought) {
       setSelectedItem(item);
       setPriceInput('');
+      setBuySharedBy(['Me']);        // default sharer
+      setShareDropdownVisible(false);
       setBuyModalVisible(true);
     } else {
       setItems(current =>
         current.map(it =>
           it.id === item.id
-            ? { ...it, bought: false, price: null, claimedBy: null }
+            ? { ...it, bought: false, price: null, claimedBy: null, sharedBy: undefined }
             : it
         )
       );
@@ -271,30 +262,20 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const handlePriceInputChange = text => {
     const numericRegex = /^\d*\.?\d*$/;
-    if (text === '' || numericRegex.test(text)) {
-      setPriceInput(text);
-    }
+    if (text === '' || numericRegex.test(text)) setPriceInput(text);
   };
 
   const handleEditPrice = item => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     setEditingPriceItemId(item.id);
     setEditingPriceValue(item.price || '');
   };
 
   const handleSavePrice = itemId => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
-    setItems(currentItems =>
-      currentItems.map(item =>
-        item.id === itemId
-          ? { ...item, price: editingPriceValue || null }
-          : item
+    if (isReadOnly) return showArchivedAlert();
+    setItems(current =>
+      current.map(item =>
+        item.id === itemId ? { ...item, price: editingPriceValue || null } : item
       )
     );
     setEditingPriceItemId(null);
@@ -303,25 +284,21 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const handlePriceEditChange = text => {
     const numericRegex = /^\d*\.?\d*$/;
-    if (text === '' || numericRegex.test(text)) {
-      setEditingPriceValue(text);
-    }
+    if (text === '' || numericRegex.test(text)) setEditingPriceValue(text);
   };
 
   const handleBuyConfirm = () => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     if (selectedItem) {
-      setItems(currentItems =>
-        currentItems.map(item =>
+      setItems(current =>
+        current.map(item =>
           item.id === selectedItem.id
             ? {
                 ...item,
                 bought: true,
                 price: priceInput,
                 claimedBy: 'Me',
+                sharedBy: buySharedBy,
               }
             : item
         )
@@ -332,22 +309,15 @@ export default function EventDetailScreen({ route, navigation }) {
     setSelectedItem(null);
   };
 
-  // ---- Edit / delete item ----
   const openEditModal = item => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     setEditingItem(item);
     setEditText(item.name);
     setEditModalVisible(true);
   };
 
   const handleSaveEdit = () => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     if (!editingItem) return;
     setItems(current =>
       current.map(it =>
@@ -360,10 +330,7 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const handleDeleteItem = () => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     if (!editingItem) return;
     setItems(current => current.filter(it => it.id !== editingItem.id));
     setEditModalVisible(false);
@@ -371,16 +338,14 @@ export default function EventDetailScreen({ route, navigation }) {
     setEditText('');
   };
 
+  // --- AI suggestion actions ---
+
   const handleGenerateSuggestions = async () => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     if (!description.trim()) return;
 
     try {
       setIsGenerating(true);
-
       const res = await fetch(`${BASE_URL}/api/suggestions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -389,17 +354,13 @@ export default function EventDetailScreen({ route, navigation }) {
           pastItems: items.map(it => it.name),
         }),
       });
-
       if (!res.ok) throw new Error('Bad response');
-
       const data = await res.json();
-
       const mapped = (data.suggestions || []).map((name, idx) => ({
         id: `ai-${Date.now()}-${idx}`,
         name,
         selected: false,
       }));
-
       setSuggestions(mapped);
     } catch (e) {
       console.error(e);
@@ -410,22 +371,16 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const toggleSuggestion = id => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     setSuggestions(prev =>
       prev.map(s => (s.id === id ? { ...s, selected: !s.selected } : s))
     );
   };
 
   const addSelectedSuggestions = () => {
-    if (isReadOnly) {
-      showArchivedAlert();
-      return;
-    }
+    if (isReadOnly) return showArchivedAlert();
     const selected = suggestions.filter(s => s.selected);
-    if (selected.length === 0) return;
+    if (!selected.length) return;
 
     const newItems = selected.map(s => ({
       id: Date.now() + Math.random(),
@@ -434,6 +389,7 @@ export default function EventDetailScreen({ route, navigation }) {
       claimedBy: null,
       bought: false,
       price: null,
+      sharedBy: [],
     }));
 
     setItems(current => [...current, ...newItems]);
@@ -441,13 +397,63 @@ export default function EventDetailScreen({ route, navigation }) {
     setAiModalVisible(false);
   };
 
-  // --- Render Helpers ---
+  // --- participants editor ---
+
+  const openParticipantsModal = () => {
+    if (isReadOnly) return showArchivedAlert();
+    const currentFriends = participants.filter(name => name !== 'Me');
+    setTempParticipants(currentFriends);
+    setParticipantsModalVisible(true);
+  };
+
+  const toggleTempParticipant = name => {
+    setTempParticipants(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    );
+  };
+
+  const cancelParticipantsSelection = () => {
+    setParticipantsModalVisible(false);
+    setTempParticipants([]);
+  };
+
+  const confirmParticipantsSelection = () => {
+    setParticipants(['Me', ...tempParticipants]);
+    setParticipantsModalVisible(false);
+  };
+
+  // --- shared-by editor ---
+
+  const openShareModal = () => {
+    setTempSharedBy(buySharedBy.length ? buySharedBy : ['Me']);
+    setShareModalVisible(true);
+  };
+
+  const toggleSharePerson = name => {
+    setTempSharedBy(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    );
+  };
+
+  const cancelShareSelection = () => {
+    setShareModalVisible(false);
+    setTempSharedBy(['Me']);
+  };
+
+  const confirmShareSelection = () => {
+    const cleaned = tempSharedBy.length ? tempSharedBy : ['Me'];
+    setBuySharedBy(cleaned);
+    setShareModalVisible(false);
+  };
+
+  // --- render helpers ---
 
   const renderItemRow = (item, isActiveList) => (
     <View key={item.id} style={detailStyles.listItemRow}>
-      {/* Checkbox (claim / undo) */}
       <TouchableOpacity
-        onPress={() => (isReadOnly ? showArchivedAlert() : handleToggleBought(item))}
+        onPress={() =>
+          isReadOnly ? showArchivedAlert() : handleToggleBought(item)
+        }
         style={{ justifyContent: 'center', alignItems: 'center' }}
       >
         {item.bought ? (
@@ -459,7 +465,6 @@ export default function EventDetailScreen({ route, navigation }) {
         )}
       </TouchableOpacity>
 
-      {/* Name */}
       <View style={{ flex: 1 }}>
         <Text
           style={[
@@ -474,9 +479,8 @@ export default function EventDetailScreen({ route, navigation }) {
         </Text>
       </View>
 
-      {/* Right-side icons */}
       <View style={detailStyles.iconGroup}>
-        {/* Price for recent items - editable */}
+        {/* price on recent items */}
         {!isActiveList &&
           (editingPriceItemId === item.id ? (
             <View
@@ -488,7 +492,7 @@ export default function EventDetailScreen({ route, navigation }) {
             >
               <Text
                 style={{
-                  fontFamily: fonts.bold,
+                  fontFamily: 'Nunito-Bold',
                   color: colors.text,
                   fontSize: 16,
                   marginRight: 2,
@@ -498,7 +502,7 @@ export default function EventDetailScreen({ route, navigation }) {
               </Text>
               <TextInput
                 style={{
-                  fontFamily: fonts.bold,
+                  fontFamily: 'Nunito-Bold',
                   color: colors.text,
                   fontSize: 16,
                   minWidth: 50,
@@ -509,7 +513,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 value={editingPriceValue}
                 onChangeText={handlePriceEditChange}
                 keyboardType="decimal-pad"
-                autoFocus={true}
+                autoFocus
                 onBlur={() => handleSavePrice(item.id)}
                 onSubmitEditing={() => handleSavePrice(item.id)}
                 placeholder="0.00"
@@ -527,7 +531,7 @@ export default function EventDetailScreen({ route, navigation }) {
               <Text
                 style={{
                   marginRight: 10,
-                  fontFamily: fonts.bold,
+                  fontFamily: 'Nunito-Bold',
                   color: colors.text,
                   fontSize: 16,
                 }}
@@ -537,7 +541,7 @@ export default function EventDetailScreen({ route, navigation }) {
             </TouchableOpacity>
           ))}
 
-        {/* Urgency + Claim + Edit only on active list */}
+        {/* active list controls */}
         {isActiveList && (
           <>
             <TouchableOpacity
@@ -590,7 +594,6 @@ export default function EventDetailScreen({ route, navigation }) {
           </>
         )}
 
-        {/* Avatar / claimed indicator – only on Recently Bought list */}
         {!isActiveList && item.claimedBy === 'Me' && (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>Me</Text>
@@ -604,23 +607,15 @@ export default function EventDetailScreen({ route, navigation }) {
     <View style={detailStyles.listContainer}>
       {activeItems.map(item => renderItemRow(item, true))}
 
-      {/* ADD ITEM ROW */}
       <View style={detailStyles.addItemRow}>
-        <View style={detailStyles.checkboxPlaceholder}>
-          <View style={detailStyles.checkbox} />
-        </View>
         <TextInput
           style={detailStyles.newItemInput}
           placeholder="New Item..."
           placeholderTextColor={colors.modalPlaceholder}
           value={newItemText}
-          onChangeText={text => {
-            if (isReadOnly) {
-              showArchivedAlert();
-            } else {
-              setNewItemText(text);
-            }
-          }}
+          onChangeText={text =>
+            isReadOnly ? showArchivedAlert() : setNewItemText(text)
+          }
           onSubmitEditing={handleAddItem}
           editable={!isReadOnly}
           onFocus={isReadOnly ? showArchivedAlert : undefined}
@@ -628,7 +623,9 @@ export default function EventDetailScreen({ route, navigation }) {
         <View style={detailStyles.iconGroup}>
           <TouchableOpacity
             onPress={() =>
-              isReadOnly ? showArchivedAlert() : setNewItemUrgent(!newItemUrgent)
+              isReadOnly
+                ? showArchivedAlert()
+                : setNewItemUrgent(!newItemUrgent)
             }
           >
             {newItemUrgent ? (
@@ -656,7 +653,6 @@ export default function EventDetailScreen({ route, navigation }) {
         </View>
       </View>
 
-      {/* RECENTLY BOUGHT TOGGLE (view-only, allowed) */}
       <TouchableOpacity
         style={detailStyles.recentlyBoughtLink}
         onPress={() => setShowRecent(!showRecent)}
@@ -747,23 +743,21 @@ export default function EventDetailScreen({ route, navigation }) {
         >
           Total Spent: ${splitData.totalSpent}
         </Text>
-        {splitData.transactions.map((transaction, index) => (
+        {splitData.transactions.map((t, index) => (
           <View key={index} style={detailStyles.splitRow}>
             <View style={detailStyles.avatarMedium}>
               <Text style={detailStyles.avatarTextMedium}>
-                {getInitial(transaction.from)}
+                {getInitial(t.from)}
               </Text>
             </View>
             <View style={detailStyles.arrowContainer}>
-              <Text style={detailStyles.amountText}>
-                ${transaction.amount}
-              </Text>
+              <Text style={detailStyles.amountText}>${t.amount}</Text>
               <View style={detailStyles.arrowLine} />
               <View style={detailStyles.arrowHead} />
             </View>
             <View style={detailStyles.avatarMedium}>
               <Text style={detailStyles.avatarTextMedium}>
-                {getInitial(transaction.to)}
+                {getInitial(t.to)}
               </Text>
             </View>
           </View>
@@ -780,6 +774,14 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   };
 
+  // friends list for participants picker
+  const effectiveFriends =
+    contextFriends && contextFriends.length > 0
+      ? contextFriends
+      : participants
+          .filter(name => name !== 'Me')
+          .map(name => ({ id: name, name }));
+
   return (
     <View style={globalStyles.container}>
       <View
@@ -791,7 +793,6 @@ export default function EventDetailScreen({ route, navigation }) {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={detailStyles.headerRow}>
-          {/* Back is still allowed */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={detailStyles.headerSide}
@@ -829,9 +830,9 @@ export default function EventDetailScreen({ route, navigation }) {
           ))}
           <TouchableOpacity
             style={detailStyles.addParticipant}
-            onPress={isReadOnly ? showArchivedAlert : undefined}
+            onPress={isReadOnly ? showArchivedAlert : openParticipantsModal}
           >
-            <FontAwesome5 name="plus" size={10} color={colors.text} />
+            <FontAwesome5 name="pen" size={10} color={colors.text} />
           </TouchableOpacity>
         </View>
 
@@ -870,22 +871,23 @@ export default function EventDetailScreen({ route, navigation }) {
         {activeTab === 'List' ? renderListTab() : renderSplitTab()}
       </ScrollView>
 
-      {/* ---- BUY MODAL ---- */}
+      {/* BUY MODAL */}
       <Modal
         animationType="fade"
-        transparent={true}
+        transparent
         visible={buyModalVisible && !isReadOnly}
-        onRequestClose={() => setBuyModalVisible(false)}
+        onRequestClose={() => {
+          setBuyModalVisible(false);
+          setShareDropdownVisible(false);
+        }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={globalStyles.modalOverlay}
-        >
+        <View style={globalStyles.modalOverlay}>
           <View style={detailStyles.modalContainer}>
             <Text style={detailStyles.modalTitle}>
               Buying: {selectedItem?.name}
             </Text>
 
+            {/* Price input */}
             <View style={detailStyles.priceInputRow}>
               <Text style={detailStyles.currencySymbol}>$</Text>
               <TextInput
@@ -894,27 +896,90 @@ export default function EventDetailScreen({ route, navigation }) {
                 keyboardType="decimal-pad"
                 value={priceInput}
                 onChangeText={handlePriceInputChange}
-                autoFocus={true}
+                autoFocus
                 placeholderTextColor={colors.modalPlaceholder}
               />
             </View>
 
+            {/* shared by */}
             <Text style={detailStyles.sharedByLabel}>shared by</Text>
 
-            <View style={detailStyles.sharedByRow}>
-              <View
-                style={[detailStyles.avatarSmallSelected, { marginRight: 5 }]}
-              >
-                <Text style={detailStyles.avatarTextSmall}>Me</Text>
+            <View>
+              <View style={detailStyles.sharedByRow}>
+                {buySharedBy.map(name => (
+                  <View
+                    key={name}
+                    style={
+                      name === 'Me'
+                        ? [detailStyles.avatarSmallSelected, { marginRight: 6 }]
+                        : [detailStyles.avatarSmall, { marginRight: 6 }]
+                    }
+                  >
+                    <Text style={detailStyles.avatarTextSmall}>
+                      {name === 'Me' ? 'Me' : name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                ))}
+
+                {/* edit button – toggles dropdown */}
+                <TouchableOpacity
+                  style={detailStyles.shareEditButton}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    setShareDropdownVisible(visible => !visible)
+                  }
+                >
+                  <FontAwesome5 name="pen" size={12} color={colors.text} />
+                </TouchableOpacity>
               </View>
-              <View style={detailStyles.avatarSmall}>
-                <Text style={detailStyles.avatarTextSmall}>A</Text>
-              </View>
+
+              {/* dropdown under sharedByRow */}
+              {shareDropdownVisible && (
+                <View style={detailStyles.shareDropdown}>
+                  {participants.map(p => {
+                    const isSelected = buySharedBy.includes(p);
+                    return (
+                      <TouchableOpacity
+                        key={p}
+                        style={detailStyles.shareDropdownItem}
+                        onPress={() => toggleSharePersonInDropdown(p)}
+                      >
+                        <View
+                          style={[
+                            detailStyles.friendCheckbox,
+                            isSelected && detailStyles.friendCheckboxSelected,
+                          ]}
+                        >
+                          {isSelected && (
+                            <FontAwesome5
+                              name="check"
+                              size={10}
+                              color={colors.background}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            detailStyles.friendName,
+                            isSelected && detailStyles.friendNameSelected,
+                          ]}
+                        >
+                          {p}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </View>
 
+            {/* footer buttons */}
             <View style={detailStyles.modalActionRow}>
               <TouchableOpacity
-                onPress={() => setBuyModalVisible(false)}
+                onPress={() => {
+                  setBuyModalVisible(false);
+                  setShareDropdownVisible(false);
+                }}
                 style={detailStyles.modalCloseBtn}
               >
                 <FontAwesome5 name="times" size={16} color="#fff" />
@@ -927,13 +992,13 @@ export default function EventDetailScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
-      {/* ---- AI SUGGESTION MODAL ---- */}
+      {/* AI SUGGESTION MODAL */}
       <Modal
         animationType="fade"
-        transparent={true}
+        transparent
         visible={aiModalVisible && !isReadOnly}
         onRequestClose={closeAiModal}
       >
@@ -943,11 +1008,7 @@ export default function EventDetailScreen({ route, navigation }) {
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
             >
-              <TouchableWithoutFeedback
-                onPress={() => {
-                  /* swallow taps inside card */
-                }}
-              >
+              <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={detailStyles.aiModalContainer}>
                   <TouchableOpacity
                     style={detailStyles.aiCloseButton}
@@ -1022,10 +1083,10 @@ export default function EventDetailScreen({ route, navigation }) {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* ---- EDIT ITEM MODAL ---- */}
+      {/* EDIT ITEM MODAL */}
       <Modal
         animationType="fade"
-        transparent={true}
+        transparent
         visible={editModalVisible && !isReadOnly}
         onRequestClose={() => setEditModalVisible(false)}
       >
@@ -1056,6 +1117,82 @@ export default function EventDetailScreen({ route, navigation }) {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* PARTICIPANTS EDIT MODAL */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={participantsModalVisible && !isReadOnly}
+        onRequestClose={cancelParticipantsSelection}
+      >
+        <TouchableWithoutFeedback onPress={cancelParticipantsSelection}>
+          <View style={globalStyles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={detailStyles.friendsModalContainer}>
+                <Text style={detailStyles.friendsModalTitle}>Select Friends</Text>
+
+                <ScrollView
+                  style={detailStyles.friendsListContainer}
+                  contentContainerStyle={{ paddingBottom: 10 }}
+                >
+                  {effectiveFriends.map(friend => {
+                    const name = friend.name;
+                    const isSelected = tempParticipants.includes(name);
+                    return (
+                      <TouchableOpacity
+                        key={friend.id ?? name}
+                        style={[
+                          detailStyles.friendItem,
+                          isSelected && detailStyles.friendItemSelected,
+                        ]}
+                        onPress={() => toggleTempParticipant(name)}
+                      >
+                        <View
+                          style={[
+                            detailStyles.friendCheckbox,
+                            isSelected && detailStyles.friendCheckboxSelected,
+                          ]}
+                        >
+                          {isSelected && (
+                            <FontAwesome5
+                              name="check"
+                              size={10}
+                              color={colors.background}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            detailStyles.friendName,
+                            isSelected && detailStyles.friendNameSelected,
+                          ]}
+                        >
+                          {name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={detailStyles.friendsModalButtonRow}>
+                  <TouchableOpacity
+                    style={detailStyles.modalCloseBtn}
+                    onPress={cancelParticipantsSelection}
+                  >
+                    <FontAwesome5 name="times" size={16} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={detailStyles.modalCheckBtn}
+                    onPress={confirmParticipantsSelection}
+                  >
+                    <FontAwesome5 name="check" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -1090,4 +1227,3 @@ const styles = {
     borderLeftColor: colors.text,
   },
 };
-

@@ -14,16 +14,12 @@ import { globalStyles, colors } from './styles/styles.js';
 import { homeStyles } from './styles/homeStyles.js';
 
 // Determine the correct BASE_URL based on platform
-// For physical devices, you may need to use your Mac's local IP (e.g., http://10.102.227.218:4000)
 const getBaseUrl = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:4000';
   } else if (Platform.OS === 'ios') {
-    // iOS Simulator uses localhost, physical device needs Mac's IP
-    // If localhost doesn't work on physical device, replace with your Mac's IP
     return __DEV__ ? 'http://localhost:4000' : 'http://10.102.227.218:4000';
   } else if (Platform.OS === 'android') {
-    // Android emulator uses 10.0.2.2, physical device needs Mac's IP
     return __DEV__ ? 'http://10.0.2.2:4000' : 'http://10.102.227.218:4000';
   }
   return 'http://localhost:4000';
@@ -31,18 +27,43 @@ const getBaseUrl = () => {
 
 const BASE_URL = getBaseUrl();
 
-export default function AddEventModal({ visible, onClose, onAddEvent, navigation, onUpdateItems, onUpdateParticipants }) {
+export default function AddEventModal({
+  visible,
+  onClose,
+  onAddEvent,
+  navigation,
+  onUpdateItems,
+  onUpdateParticipants,
+  // friends should be passed from HomeScreen/EventContext so it matches Profile
+  friends = [],
+}) {
   const [newGroupName, setNewGroupName] = useState('');
   const [newComments, setNewComments] = useState('');
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
   const [isConnected, setIsConnected] = useState(null); // null = unknown, true = connected, false = offline
-  const [selectedParticipants, setSelectedParticipants] = useState(['Me']); // Start with "Me"
+
+  // committed participants for this event
+  const [selectedParticipants, setSelectedParticipants] = useState(['Me']); // always includes "Me"
+
+  // friends picker modal + staging state
   const [friendsModalVisible, setFriendsModalVisible] = useState(false);
-  
-  // Mock friends list - replace with actual friends data later
-  const friendsList = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'];
+  const [tempSelectedFriends, setTempSelectedFriends] = useState([]); // only friend names (no "Me")
+
+  // optional fallback if no friends are configured yet
+  const fallbackFriends = [
+    { id: 'f1', name: 'Alice' },
+    { id: 'f2', name: 'Bob' },
+    { id: 'f3', name: 'Charlie' },
+    { id: 'f4', name: 'Diana' },
+    { id: 'f5', name: 'Eve' },
+    { id: 'f6', name: 'Frank' },
+  ];
+
+  // final list to display in the friend picker
+  const effectiveFriends =
+    friends && friends.length > 0 ? friends : fallbackFriends;
 
   // Reset state when modal closes
   useEffect(() => {
@@ -55,31 +76,29 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
       setIsConnected(null);
       setSelectedParticipants(['Me']);
       setFriendsModalVisible(false);
+      setTempSelectedFriends([]);
     }
   }, [visible]);
 
   // Fetch AI suggestions when user inputs group name or comments
   useEffect(() => {
     const fetchSuggestions = async () => {
-      // Only fetch if user has entered some text
-      if ((newGroupName.trim().length > 0 || newComments.trim().length > 0)) {
+      if (newGroupName.trim().length > 0 || newComments.trim().length > 0) {
         setIsLoadingSuggestions(true);
-        
-        // Debounce API call
+
         const timeoutId = setTimeout(async () => {
           try {
             const description = `${newGroupName} ${newComments}`.trim();
             const url = `${BASE_URL}/api/suggestions`;
-            
-            // Try to fetch AI suggestions with a timeout
+
             const controller = new AbortController();
-            const fetchTimeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-            
+            const fetchTimeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
             const res = await fetch(url, {
               method: 'POST',
-              headers: { 
+              headers: {
                 'Content-Type': 'application/json',
-                'Accept': 'application/json',
+                Accept: 'application/json',
               },
               body: JSON.stringify({
                 description,
@@ -91,30 +110,29 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
             clearTimeout(fetchTimeout);
 
             if (!res.ok) {
-              // If server returns error, fall back to placeholder items
               throw new Error('Server error');
             }
 
             const data = await res.json(); // { suggestions: string[] }
-            
-            // Map string array to objects with id and name
-            const mappedSuggestions = (data.suggestions || []).map((name, idx) => ({
-              id: `ai-${Date.now()}-${idx}`,
-              name,
-            }));
+
+            const mappedSuggestions = (data.suggestions || []).map(
+              (name, idx) => ({
+                id: `ai-${Date.now()}-${idx}`,
+                name,
+              })
+            );
 
             setAiSuggestions(mappedSuggestions);
-            setIsConnected(true); // Successfully connected
+            setIsConnected(true);
           } catch (error) {
-            // Silently fall back to placeholder items - no error shown to user
-            // Only log to console for debugging
             if (error.name !== 'AbortError') {
-              console.log('[AddEventModal] Using fallback items (connection unavailable)');
+              console.log(
+                '[AddEventModal] Using fallback items (connection unavailable)'
+              );
             }
-            
-            setIsConnected(false); // Connection failed
-            
-            // Fallback to basic grocery items when connection fails
+
+            setIsConnected(false);
+
             const fallbackItems = [
               { id: 'fallback-1', name: 'Milk' },
               { id: 'fallback-2', name: 'Bread' },
@@ -129,12 +147,12 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
               { id: 'fallback-11', name: 'Bananas' },
               { id: 'fallback-12', name: 'Yogurt' },
             ];
-            
+
             setAiSuggestions(fallbackItems);
           } finally {
             setIsLoadingSuggestions(false);
           }
-        }, 800); // 800ms debounce
+        }, 800); // debounce
 
         return () => clearTimeout(timeoutId);
       } else {
@@ -147,34 +165,21 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
   }, [newGroupName, newComments]);
 
   const handleSelectSuggestion = (item) => {
-    // Toggle item selection
-    setSelectedItems(currentSelected => {
-      const isSelected = currentSelected.some(selected => selected.id === item.id);
+    setSelectedItems((currentSelected) => {
+      const isSelected = currentSelected.some(
+        (selected) => selected.id === item.id
+      );
       if (isSelected) {
-        // Remove if already selected
-        return currentSelected.filter(selected => selected.id !== item.id);
+        return currentSelected.filter((selected) => selected.id !== item.id);
       } else {
-        // Add if not selected
         return [...currentSelected, item];
-      }
-    });
-  };
-
-  const handleToggleFriend = (friendName) => {
-    setSelectedParticipants(current => {
-      if (current.includes(friendName)) {
-        // Remove friend (but keep "Me")
-        return current.filter(name => name === friendName || name === 'Me');
-      } else {
-        // Add friend
-        return [...current, friendName];
       }
     });
   };
 
   const handleAddNewGroup = () => {
     if (newGroupName.trim() === '') return;
-    
+
     const newEventId = Date.now();
     const initialItems = selectedItems.map((item, index) => ({
       id: Date.now() + index,
@@ -182,10 +187,9 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
       urgent: false,
       claimedBy: null,
       bought: false,
-      price: null
+      price: null,
     }));
-    
-    // Call the callback to add event to the list first
+
     onAddEvent({
       id: newEventId,
       title: newGroupName,
@@ -193,21 +197,51 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
       library: null,
       isNew: true,
       items: initialItems,
-      participants: selectedParticipants
+      participants: selectedParticipants,
     });
-    
-    // Navigate to EventDetail with selected items and participants
-    navigation.navigate('EventDetail', { 
+
+    navigation.navigate('EventDetail', {
       eventId: newEventId,
       eventTitle: newGroupName,
       isNew: true,
       initialItems: initialItems,
       participants: selectedParticipants,
       onUpdateItems: onUpdateItems,
-      onUpdateParticipants: onUpdateParticipants
+      onUpdateParticipants: onUpdateParticipants,
     });
-    
+
     onClose();
+  };
+
+  // ----- Friends modal helpers -----
+
+  const openFriendsModal = () => {
+    // temp state only contains friends (no "Me")
+    const currentFriends = selectedParticipants.filter(
+      (name) => name !== 'Me'
+    );
+    setTempSelectedFriends(currentFriends);
+    setFriendsModalVisible(true);
+  };
+
+  const toggleTempFriend = (friendName) => {
+    setTempSelectedFriends((prev) =>
+      prev.includes(friendName)
+        ? prev.filter((f) => f !== friendName)
+        : [...prev, friendName]
+    );
+  };
+
+  const cancelFriendsSelection = () => {
+    // Do NOT touch selectedParticipants, just close
+    setFriendsModalVisible(false);
+    setTempSelectedFriends([]);
+  };
+
+  const confirmFriendsSelection = () => {
+    // Commit changes: always keep "Me" plus the selected friends
+    setSelectedParticipants(['Me', ...tempSelectedFriends]);
+    setFriendsModalVisible(false);
   };
 
   return (
@@ -218,10 +252,13 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
       onRequestClose={onClose}
     >
       <View style={homeStyles.modalOverlayContainer}>
-        <View style={[
-          globalStyles.modalOverlay,
-          (isLoadingSuggestions || aiSuggestions.length > 0) && homeStyles.modalOverlayWithSuggestions
-        ]}>
+        <View
+          style={[
+            globalStyles.modalOverlay,
+            (isLoadingSuggestions || aiSuggestions.length > 0) &&
+              homeStyles.modalOverlayWithSuggestions,
+          ]}
+        >
           <View style={homeStyles.modalContainer}>
             <TextInput
               style={homeStyles.modalInput}
@@ -231,21 +268,29 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
               onChangeText={setNewGroupName}
             />
 
-            <View style={homeStyles.participantsRow}>
-              <FontAwesome5 name="users" size={24} color={colors.text} />
+            {/* Participants row */}
+            <View style={[homeStyles.participantsRow, { marginBottom: 16 }]}>
+              {/* Make the icon its own “chip” so it lines up nicely */}
+              <View style={homeStyles.participantIconCircle}>
+                <FontAwesome5 name="users" size={18} color={colors.text} />
+              </View>
+
+              {/* Show Me plus any selected friends */}
               {selectedParticipants.map((participant, index) => (
-                <TouchableOpacity 
-                  key={index} 
+                <View
+                  key={`${participant}-${index}`}
                   style={homeStyles.participantButton}
                 >
                   <Text style={homeStyles.participantButtonText}>{participant}</Text>
-                </TouchableOpacity>
+                </View>
               ))}
-              <TouchableOpacity 
-                style={homeStyles.participantAddButton}
-                onPress={() => setFriendsModalVisible(true)}
+
+              {/* Plus chip – same size as participant chips */}
+              <TouchableOpacity
+                style={homeStyles.participantButton}
+                onPress={openFriendsModal}
               >
-                <FontAwesome5 name="plus" size={32} color={colors.text} />
+                <FontAwesome5 name="plus" size={18} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -265,13 +310,21 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
                 style={[homeStyles.modalActionButton, homeStyles.closeButton]}
                 onPress={onClose}
               >
-                <FontAwesome5 name="times" size={24} color={colors.background}/>
+                <FontAwesome5
+                  name="times"
+                  size={24}
+                  color={colors.background}
+                />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[homeStyles.modalActionButton, homeStyles.confirmButton]}
                 onPress={handleAddNewGroup}
               >
-                <FontAwesome5 name="check" size={24} color={colors.background} />
+                <FontAwesome5
+                  name="check"
+                  size={24}
+                  color={colors.background}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -283,19 +336,20 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
             <View style={homeStyles.suggestionsHeader}>
               <FontAwesome5 name="magic" size={16} color={colors.accent} />
               <Text style={homeStyles.suggestionsHeaderText}>
-                {isLoadingSuggestions ? 'Generating suggestions...' : 'Grabbit Suggests:'}
+                {isLoadingSuggestions
+                  ? 'Generating suggestions...'
+                  : 'Grabbit Suggests:'}
               </Text>
-              {/* Connection indicator */}
               {!isLoadingSuggestions && isConnected !== null && (
-                <FontAwesome5 
-                  name={isConnected ? "check-circle" : "times-circle"} 
-                  size={16} 
-                  color={isConnected ? "#4CAF50" : "#F44336"}
+                <FontAwesome5
+                  name={isConnected ? 'check-circle' : 'times-circle'}
+                  size={16}
+                  color={isConnected ? '#4CAF50' : '#F44336'}
                   style={homeStyles.connectionIndicatorIcon}
                 />
               )}
             </View>
-            
+
             {isLoadingSuggestions ? (
               <View style={homeStyles.loadingContainer}>
                 <Text style={homeStyles.loadingText}>Thinking...</Text>
@@ -303,20 +357,25 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
             ) : (
               <View style={homeStyles.suggestionsGrid}>
                 {aiSuggestions.map((item) => {
-                  const isSelected = selectedItems.some(selected => selected.id === item.id);
+                  const isSelected = selectedItems.some(
+                    (selected) => selected.id === item.id
+                  );
                   return (
                     <TouchableOpacity
                       key={item.id}
                       style={[
                         homeStyles.suggestionItemBlock,
-                        isSelected && homeStyles.suggestionItemBlockSelected
+                        isSelected && homeStyles.suggestionItemBlockSelected,
                       ]}
                       onPress={() => handleSelectSuggestion(item)}
                     >
-                      <Text style={[
-                        homeStyles.suggestionItemText,
-                        isSelected && homeStyles.suggestionItemTextSelected
-                      ]}>
+                      <Text
+                        style={[
+                          homeStyles.suggestionItemText,
+                          isSelected &&
+                            homeStyles.suggestionItemTextSelected,
+                        ]}
+                      >
                         {item.name}
                       </Text>
                     </TouchableOpacity>
@@ -325,7 +384,7 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
               </View>
             )}
           </View>
-          )}
+        )}
       </View>
 
       {/* Friends Selection Modal */}
@@ -333,58 +392,90 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
         animationType="fade"
         transparent={true}
         visible={friendsModalVisible}
-        onRequestClose={() => setFriendsModalVisible(false)}
+        onRequestClose={cancelFriendsSelection}
       >
         <View style={globalStyles.modalOverlay}>
           <View style={homeStyles.friendsModalContainer}>
             <Text style={homeStyles.friendsModalTitle}>Select Friends</Text>
-            
-            <ScrollView 
+
+            <ScrollView
               style={homeStyles.friendsListContainer}
               contentContainerStyle={{ paddingBottom: 10 }}
             >
-              {friendsList.map((friend) => {
-                const isSelected = selectedParticipants.includes(friend);
+              {effectiveFriends.map((friend) => {
+                const name = friend.name;
+                const isSelected = tempSelectedFriends.includes(name);
                 return (
                   <TouchableOpacity
-                    key={friend}
+                    key={friend.id ?? name}
                     style={[
                       homeStyles.friendItem,
-                      isSelected && homeStyles.friendItemSelected
+                      isSelected && homeStyles.friendItemSelected,
                     ]}
-                    onPress={() => handleToggleFriend(friend)}
+                    onPress={() => toggleTempFriend(name)}
                   >
-                    <View style={[
-                      homeStyles.friendCheckbox,
-                      isSelected && homeStyles.friendCheckboxSelected
-                    ]}>
+                    <View
+                      style={[
+                        homeStyles.friendCheckbox,
+                        isSelected && homeStyles.friendCheckboxSelected,
+                      ]}
+                    >
                       {isSelected && (
-                        <FontAwesome5 name="check" size={12} color={colors.background} />
+                        <FontAwesome5
+                          name="check"
+                          size={12}
+                          color={colors.background}
+                        />
                       )}
                     </View>
-                    <Text style={[
-                      homeStyles.friendName,
-                      isSelected && homeStyles.friendNameSelected
-                    ]}>
-                      {friend}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          homeStyles.friendName,
+                          isSelected && homeStyles.friendNameSelected,
+                        ]}
+                      >
+                        {name}
+                      </Text>
+                      {/* Optional: small phone/email lines if present */}
+                      {friend.phone ? (
+                        <Text style={homeStyles.friendSubText}>
+                          {friend.phone}
+                        </Text>
+                      ) : null}
+                      {friend.email ? (
+                        <Text style={homeStyles.friendSubText}>
+                          {friend.email}
+                        </Text>
+                      ) : null}
+                    </View>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
 
             <View style={homeStyles.friendsModalButtonRow}>
+              {/* discard changes */}
               <TouchableOpacity
                 style={[homeStyles.modalActionButton, homeStyles.closeButton]}
-                onPress={() => setFriendsModalVisible(false)}
+                onPress={cancelFriendsSelection}
               >
-                <FontAwesome5 name="times" size={20} color={colors.background} />
+                <FontAwesome5
+                  name="times"
+                  size={20}
+                  color={colors.background}
+                />
               </TouchableOpacity>
+              {/* commit changes */}
               <TouchableOpacity
                 style={[homeStyles.modalActionButton, homeStyles.confirmButton]}
-                onPress={() => setFriendsModalVisible(false)}
+                onPress={confirmFriendsSelection}
               >
-                <FontAwesome5 name="check" size={20} color={colors.background} />
+                <FontAwesome5
+                  name="check"
+                  size={20}
+                  color={colors.background}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -393,4 +484,3 @@ export default function AddEventModal({ visible, onClose, onAddEvent, navigation
     </Modal>
   );
 }
-

@@ -31,11 +31,7 @@ export default function ProfileScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('friends'); // 'friends' | 'archive'
 
   // --- Friends state ---
-  const [friends, setFriends] = useState([
-    { id: 1, name: 'Amy', phone: '555-111-2222', email: 'amy@example.com' },
-    { id: 2, name: 'Ben', phone: '555-333-4444', email: 'ben@example.com' },
-    { id: 3, name: 'Chris', phone: '555-555-6666', email: 'chris@example.com' },
-  ]);
+  const { archivedEvents, unarchiveEvent, friends, setFriends } = useContext(EventContext);
 
   // used in the "add friend" modal
   const [newFriendName, setNewFriendName] = useState('');
@@ -47,9 +43,6 @@ export default function ProfileScreen({ navigation }) {
     { id: 101, name: 'Diana', contact: 'diana@example.com' },
     { id: 102, name: 'Evan', contact: '555-777-8888' },
   ]);
-
-  // --- Events from context ---
-  const { archivedEvents, unarchiveEvent } = useContext(EventContext);
 
   // --- Archived event detail modal state ---
   const [selectedArchivedEvent, setSelectedArchivedEvent] = useState(null);
@@ -90,7 +83,6 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const handleAcceptRequest = (request) => {
-    // move to friends list
     setFriends(prev => [
       {
         id: Date.now(),
@@ -100,7 +92,6 @@ export default function ProfileScreen({ navigation }) {
       },
       ...prev,
     ]);
-    // remove from requests
     setFriendRequests(prev => prev.filter(r => r.id !== request.id));
   };
 
@@ -265,7 +256,7 @@ export default function ProfileScreen({ navigation }) {
                   activeTab === 'archive' && profileStyles.tabTextActive,
                 ]}
               >
-                Event archive
+                Event Archive
               </Text>
             </TouchableOpacity>
           </View>
@@ -363,7 +354,7 @@ export default function ProfileScreen({ navigation }) {
                     friendTab === 'add' && profileStyles.friendModalTabTextActive,
                   ]}
                 >
-                  Add friend
+                  Add Friend
                 </Text>
               </TouchableOpacity>
 

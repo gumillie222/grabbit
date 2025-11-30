@@ -500,4 +500,106 @@ export const detailStyles = StyleSheet.create({
     gap: 12,
     marginTop: 16,
   },
+
+  // --- Collaborators / Friends modal ---
+  friendsModalContainer: {
+    width: '85%',
+    maxHeight: '70%',
+    backgroundColor: '#F2EFE9',
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+
+  friendsModalTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 18,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+
+  friendsListContainer: {
+    marginTop: 4,
+  },
+
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    marginBottom: 8,
+  },
+
+  friendItemSelected: {
+    backgroundColor: '#FAD4C4',
+  },
+
+  friendCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.text,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+
+  friendCheckboxSelected: {
+    backgroundColor: colors.text,
+    borderColor: colors.text,
+  },
+
+  friendName: {
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    color: colors.text,
+  },
+
+  friendNameSelected: {
+    fontFamily: fonts.bold,
+  },
+
+  friendsModalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 16,
+    gap: 12,
+  },
+
+  shareEditButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  
+  shareDropdown: {
+    marginTop: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#F2EFE9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  
+  shareDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
 });
