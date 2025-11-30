@@ -1,11 +1,12 @@
-// profileStyles.js
+// styles/profileStyles.js
 import { StyleSheet } from 'react-native';
-import { colors, fonts } from './styles'; 
+import { colors, fonts } from './styles';
 
 export const profileStyles = StyleSheet.create({
+  /* -------- Core profile layout -------- */
   profileContainer: {
     flex: 1,
-    backgroundColor: colors.background, 
+    backgroundColor: colors.background,
     alignItems: 'center',
     paddingTop: 20,
   },
@@ -13,18 +14,20 @@ export const profileStyles = StyleSheet.create({
     flexDirection: 'column',
     position: 'absolute',
     top: 20,
-    left: 20, 
-    zIndex: 1, 
+    left: 20,
+    zIndex: 1,
   },
   iconButton: {
     padding: 10,
     marginBottom: 10,
   },
+
+  /* -------- Avatar + name -------- */
   avatarLarge: {
     width: 120,
     height: 120,
-    borderRadius: 60, 
-    backgroundColor: colors.placeholder, 
+    borderRadius: 60,
+    backgroundColor: colors.placeholder,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 80,
@@ -33,22 +36,22 @@ export const profileStyles = StyleSheet.create({
   avatarTextLarge: {
     fontSize: 50,
     fontFamily: fonts.bold,
-    color: colors.text, 
+    color: colors.text,
   },
   userName: {
     fontSize: 28,
-    fontFamily: fonts.bold, 
-    color: colors.text, 
+    fontFamily: fonts.bold,
+    color: colors.text,
     marginBottom: 10,
   },
   userInfoText: {
     fontSize: 18,
-    fontFamily: fonts.regular, 
+    fontFamily: fonts.regular,
     color: colors.text,
     marginBottom: 5,
   },
-  
 
+  /* -------- Bottom nav (if used) -------- */
   bottomNavBar: {
     position: 'absolute',
     bottom: 0,
@@ -57,8 +60,8 @@ export const profileStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    backgroundColor: colors.tabBarBg, // Example color
-    height: 70, // Standard height for tab bars
+    backgroundColor: colors.tabBarBg,
+    height: 70,
     borderTopWidth: 1,
     borderTopColor: colors.tabBarBorder,
   },
@@ -69,7 +72,7 @@ export const profileStyles = StyleSheet.create({
     paddingVertical: 10,
   },
 
-  // Edit modal
+  /* -------- Edit profile modal -------- */
   modalContainer: {
     width: '90%',
     backgroundColor: colors.cardBg,
@@ -118,5 +121,309 @@ export const profileStyles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontFamily: fonts.bold,
+  },
+
+  /* ===================== moved localStyles starts here ===================== */
+
+  /* Tabs */
+  tabRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  tabButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#d0c9bd',
+    backgroundColor: 'transparent',
+  },
+  tabButtonActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  tabText: {
+    fontSize: 16,
+    fontFamily: 'System',
+    color: colors.text,
+  },
+  tabTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+
+  /* Cards */
+  sectionCard: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 16,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    marginBottom: 10,
+  },
+  emptyText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#888',
+  },
+
+  /* Friends list */
+  addFriendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginBottom: 6,
+    borderRadius: 14,
+    backgroundColor: '#f5f2eb',
+    paddingHorizontal: 10,
+  },
+  addFriendIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  addFriendTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  addFriendSubtitle: {
+    fontSize: 14,
+    color: '#777',
+  },
+  friendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  friendAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#d0ac8c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  friendAvatarText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  friendName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  friendSubText: {
+    fontSize: 14,
+    color: '#777',
+  },
+
+  /* Archive cards */
+  archiveCardWrapper: {
+    marginBottom: 10,
+  },
+  archiveCard: {
+    backgroundColor: '#f7e0c5',
+    borderRadius: 16,
+    padding: 12,
+    paddingTop: 16,
+  },
+  archiveTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  archiveSubtitle: {
+    fontSize: 14,
+    color: '#6e6e6e',
+  },
+  unarchiveBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    zIndex: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* Archived detail modal */
+  archiveDetailContainer: {
+    width: '88%',
+    maxHeight: '80%',
+    backgroundColor: '#f2efe9',
+    borderRadius: 20,
+    padding: 16,
+  },
+  archiveDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  archiveDetailTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  archiveDetailSection: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  archiveDetailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  chip: {
+    backgroundColor: '#e0d2c0',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  chipText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  bullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    marginTop: 7,
+    marginRight: 8,
+  },
+  itemText: {
+    fontSize: 16,
+    color: colors.text,
+  },
+  itemSubText: {
+    fontSize: 14,
+    color: '#777',
+  },
+  archiveBanner: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#aa5a4a',
+  },
+
+  /* Friend modal */
+  friendModalContainer: {
+    width: '88%',
+    maxHeight: '75%',
+    backgroundColor: '#f2efe9',
+    borderRadius: 20,
+    padding: 16,
+  },
+  friendModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  friendModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  friendModalTabRow: {
+    flexDirection: 'row',
+    borderRadius: 20,
+    backgroundColor: '#e6dfd2',
+    padding: 3,
+    marginBottom: 10,
+  },
+  friendModalTabButton: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendModalTabActive: {
+    backgroundColor: '#fff',
+  },
+  friendModalTabText: {
+    fontSize: 16,
+    color: '#6b5b4b',
+  },
+  friendModalTabTextActive: {
+    fontWeight: '600',
+    color: colors.text,
+  },
+  friendModalHint: {
+    fontSize: 14,
+    color: '#777',
+    marginBottom: 6,
+  },
+  friendModalInput: {
+    backgroundColor: '#f5f2eb',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    marginBottom: 8,
+    color: colors.text,
+  },
+  friendModalPrimaryButton: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accent,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  friendModalPrimaryText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  requestButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  requestAccept: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#4caf50',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestDecline: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#d9534f',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
