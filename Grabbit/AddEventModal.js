@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Platform,
   ScrollView,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 
@@ -421,92 +422,73 @@ export default function AddEventModal({
         visible={friendsModalVisible}
         onRequestClose={cancelFriendsSelection}
       >
-        <View style={globalStyles.modalOverlay}>
-          <View style={homeStyles.friendsModalContainer}>
-            <Text style={homeStyles.friendsModalTitle}>Select Friends</Text>
+        <TouchableWithoutFeedback onPress={cancelFriendsSelection}>
+          <View style={globalStyles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={detailStyles.friendsModalContainer}>
+                <Text style={detailStyles.friendsModalTitle}>Select Friends</Text>
 
-            <ScrollView
-              style={homeStyles.friendsListContainer}
-              contentContainerStyle={{ paddingBottom: 10 }}
-            >
-              {effectiveFriends.map((friend) => {
-                const name = friend.name;
-                const isSelected = tempSelectedFriends.includes(name);
-                return (
-                  <TouchableOpacity
-                    key={friend.id ?? name}
-                    style={[
-                      homeStyles.friendItem,
-                      isSelected && homeStyles.friendItemSelected,
-                    ]}
-                    onPress={() => toggleTempFriend(name)}
-                  >
-                    <View
-                      style={[
-                        homeStyles.friendCheckbox,
-                        isSelected && homeStyles.friendCheckboxSelected,
-                      ]}
-                    >
-                      {isSelected && (
-                        <FontAwesome5
-                          name="check"
-                          size={12}
-                          color={colors.background}
-                        />
-                      )}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
+                <ScrollView
+                  style={detailStyles.friendsListContainer}
+                  contentContainerStyle={{ paddingBottom: 10 }}
+                >
+                  {effectiveFriends.map((friend) => {
+                    const name = friend.name;
+                    const isSelected = tempSelectedFriends.includes(name);
+                    return (
+                      <TouchableOpacity
+                        key={friend.id ?? name}
                         style={[
-                          homeStyles.friendName,
-                          isSelected && homeStyles.friendNameSelected,
+                          detailStyles.friendItem,
+                          isSelected && detailStyles.friendItemSelected,
                         ]}
+                        onPress={() => toggleTempFriend(name)}
                       >
-                        {name}
-                      </Text>
-                      {/* Optional: small phone/email lines if present */}
-                      {friend.phone ? (
-                        <Text style={homeStyles.friendSubText}>
-                          {friend.phone}
+                        <View
+                          style={[
+                            detailStyles.friendCheckbox,
+                            isSelected && detailStyles.friendCheckboxSelected,
+                          ]}
+                        >
+                          {isSelected && (
+                            <FontAwesome5
+                              name="check"
+                              size={10}
+                              color={colors.background}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            detailStyles.friendName,
+                            isSelected && detailStyles.friendNameSelected,
+                          ]}
+                        >
+                          {name}
                         </Text>
-                      ) : null}
-                      {friend.email ? (
-                        <Text style={homeStyles.friendSubText}>
-                          {friend.email}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
 
-            <View style={homeStyles.friendsModalButtonRow}>
-              {/* discard changes */}
-              <TouchableOpacity
-                style={[homeStyles.modalActionButton, homeStyles.closeButton]}
-                onPress={cancelFriendsSelection}
-              >
-                <FontAwesome5
-                  name="times"
-                  size={20}
-                  color={colors.background}
-                />
-              </TouchableOpacity>
-              {/* commit changes */}
-              <TouchableOpacity
-                style={[homeStyles.modalActionButton, homeStyles.confirmButton]}
-                onPress={confirmFriendsSelection}
-              >
-                <FontAwesome5
-                  name="check"
-                  size={20}
-                  color={colors.background}
-                />
-              </TouchableOpacity>
-            </View>
+                <View style={detailStyles.friendsModalButtonRow}>
+                  <TouchableOpacity
+                    style={detailStyles.modalCloseBtn}
+                    onPress={cancelFriendsSelection}
+                  >
+                    <FontAwesome5 name="times" size={16} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={detailStyles.modalCheckBtn}
+                    onPress={confirmFriendsSelection}
+                  >
+                    <FontAwesome5 name="check" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </Modal>
   );
