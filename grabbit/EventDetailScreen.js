@@ -14,14 +14,23 @@ import {
 import Constants from 'expo-constants';
 import { FontAwesome5 } from '@expo/vector-icons';
 
-import { globalStyles, colors } from './styles/styles.js';
+import { globalStyles, colors, fonts } from './styles/styles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
 import { EventContext } from './EventContext';
 
-const BASE_URL =
-  Platform.OS === 'web' || Platform.OS === 'ios'
-    ? 'http://localhost:4000'
-    : 'http://10.0.2.2:4000';
+// Determine the correct BASE_URL based on platform
+const getBaseUrl = () => {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:4000';
+  } else if (Platform.OS === 'ios') {
+    return __DEV__ ? 'http://localhost:4000' : 'http://10.102.227.218:4000';
+  } else if (Platform.OS === 'android') {
+    return __DEV__ ? 'http://10.0.2.2:4000' : 'http://10.102.227.218:4000';
+  }
+  return 'http://localhost:4000';
+};
+
+const BASE_URL = getBaseUrl();
 
 export default function EventDetailScreen({ route, navigation }) {
   const {
@@ -57,6 +66,11 @@ export default function EventDetailScreen({ route, navigation }) {
   const [buySharedBy, setBuySharedBy] = useState(['Me']);
   const [shareDropdownVisible, setShareDropdownVisible] = useState(false);
 
+  // editing sharedBy for recently bought items
+  const [editingSharedByItemId, setEditingSharedByItemId] = useState(null);
+  const [editSharedBy, setEditSharedBy] = useState([]);
+  const [editShareDropdownVisible, setEditShareDropdownVisible] = useState(false);
+
   const [items, setItems] = useState(() =>
     initialItems && Array.isArray(initialItems)
       ? JSON.parse(JSON.stringify(initialItems))
@@ -79,6 +93,8 @@ export default function EventDetailScreen({ route, navigation }) {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [editText, setEditText] = useState('');
+
+  const [detailedModalVisible, setDetailedModalVisible] = useState(false);
 
   const showArchivedAlert = () =>
     Alert.alert(
@@ -108,6 +124,11 @@ export default function EventDetailScreen({ route, navigation }) {
     participants.forEach(p => (balances[p] = 0));
   
     const transactions = [];
+    
+    // Calculate total spent
+    const totalSpent = items
+      .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
+      .reduce((sum, item) => sum + parseFloat(item.price), 0);
   
     items
       .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
@@ -161,8 +182,12 @@ export default function EventDetailScreen({ route, navigation }) {
       if (debtor.amount <= 0.01) d++;
       if (creditor.amount <= 0.01) c++;
     }
-  
-    return { balances, transactions };
+    
+    return { 
+      balances, 
+      transactions, 
+      totalSpent: totalSpent.toFixed(2)
+    };
   }, [items, participants]);
 
   const closeAiModal = () => {
@@ -246,7 +271,7 @@ export default function EventDetailScreen({ route, navigation }) {
     if (!item.bought) {
       setSelectedItem(item);
       setPriceInput('');
-      setBuySharedBy(['Me']);        // default sharer
+      setBuySharedBy([...participants]);        // default: shared by everyone
       setShareDropdownVisible(false);
       setBuyModalVisible(true);
     } else {
@@ -346,15 +371,30 @@ export default function EventDetailScreen({ route, navigation }) {
 
     try {
       setIsGenerating(true);
-      const res = await fetch(`${BASE_URL}/api/suggestions`, {
+      const url = `${BASE_URL}/api/suggestions`;
+      
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
         body: JSON.stringify({
           description,
           pastItems: items.map(it => it.name),
         }),
+        signal: controller.signal,
       });
-      if (!res.ok) throw new Error('Bad response');
+
+      clearTimeout(fetchTimeout);
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
       const data = await res.json();
       const mapped = (data.suggestions || []).map((name, idx) => ({
         id: `ai-${Date.now()}-${idx}`,
@@ -363,8 +403,14 @@ export default function EventDetailScreen({ route, navigation }) {
       }));
       setSuggestions(mapped);
     } catch (e) {
-      console.error(e);
-      Alert.alert("Couldn't fetch AI suggestions.");
+      if (e.name === 'AbortError') {
+        console.log('[EventDetailScreen] AI request timeout');
+        Alert.alert("Request timed out. Please try again.");
+      } else {
+        console.error('[EventDetailScreen] AI request error:', e);
+        Alert.alert("Couldn't fetch AI suggestions. Please check your connection.");
+      }
+      setSuggestions([]);
     } finally {
       setIsGenerating(false);
     }
@@ -492,7 +538,7 @@ export default function EventDetailScreen({ route, navigation }) {
             >
               <Text
                 style={{
-                  fontFamily: 'Nunito-Bold',
+                  fontFamily: fonts.bold,
                   color: colors.text,
                   fontSize: 16,
                   marginRight: 2,
@@ -531,7 +577,7 @@ export default function EventDetailScreen({ route, navigation }) {
               <Text
                 style={{
                   marginRight: 10,
-                  fontFamily: 'Nunito-Bold',
+                  fontFamily: fonts.bold,
                   color: colors.text,
                   fontSize: 16,
                 }}
@@ -620,37 +666,14 @@ export default function EventDetailScreen({ route, navigation }) {
           editable={!isReadOnly}
           onFocus={isReadOnly ? showArchivedAlert : undefined}
         />
-        <View style={detailStyles.iconGroup}>
-          <TouchableOpacity
-            onPress={() =>
-              isReadOnly
-                ? showArchivedAlert()
-                : setNewItemUrgent(!newItemUrgent)
-            }
-          >
-            {newItemUrgent ? (
-              <View style={detailStyles.urgentIcon}>
-                <Text style={detailStyles.exclamation}>!</Text>
-              </View>
-            ) : (
-              <View
-                style={[
-                  detailStyles.dashedCircle,
-                  { borderColor: '#ccc', borderStyle: 'solid' },
-                ]}
-              />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={detailStyles.aiIconButton}
-            onPress={() =>
-              isReadOnly ? showArchivedAlert() : setAiModalVisible(true)
-            }
-          >
-            <FontAwesome5 name="magic" size={14} color={colors.text} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={detailStyles.aiIconButton}
+          onPress={() =>
+            isReadOnly ? showArchivedAlert() : setAiModalVisible(true)
+          }
+        >
+          <FontAwesome5 name="magic" size={14} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity
@@ -674,65 +697,83 @@ export default function EventDetailScreen({ route, navigation }) {
     </View>
   );
 
+  // Calculate spending per person (includes items bought for them via sharedBy)
+  const getSpendingPerPerson = () => {
+    const spending = {};
+    participants.forEach(p => (spending[p] = 0));
+    
+    items
+      .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
+      .forEach(item => {
+        const price = parseFloat(item.price);
+        // Determine who shares the cost
+        const sharers = Array.isArray(item.sharedBy) && item.sharedBy.length > 0
+          ? item.sharedBy
+          : [item.claimedBy ?? 'Me'];
+        
+        // Split the cost equally among sharers
+        const perPerson = price / sharers.length;
+        
+        // Add each person's share to their spending
+        sharers.forEach(person => {
+          spending[person] = (spending[person] || 0) + perPerson;
+        });
+      });
+    
+    return spending;
+  };
+
   const renderSplitTab = () => {
     const getInitial = name => name.charAt(0).toUpperCase();
+    
+    // Check if all balances are truly settled (within 0.01 of zero)
+    const allBalancesSettled = Object.values(splitData.balances).every(
+      bal => Math.abs(bal) < 0.01
+    );
 
-    if (splitData.transactions.length === 0) {
+    // If no transactions and all settled, show "All settled up!"
+    if (splitData.transactions.length === 0 && allBalancesSettled) {
       return (
         <View style={detailStyles.splitCenterContainer}>
-          {parseFloat(splitData.totalSpent) === 0 ? (
+          <>
             <Text
               style={[
                 detailStyles.amountText,
-                { fontSize: 14, color: '#999' },
+                { marginBottom: 30, fontSize: 16 },
               ]}
             >
-              {hasSettled ? 'All cleared up' : 'No items purchased yet'}
+              Total Spent: ${splitData.totalSpent}
             </Text>
-          ) : (
-            <>
-              <Text
-                style={[
-                  detailStyles.amountText,
-                  { marginBottom: 20, fontSize: 16 },
-                ]}
-              >
-                Total Spent: ${splitData.totalSpent}
-              </Text>
-              <Text
-                style={[
-                  detailStyles.amountText,
-                  {
-                    marginBottom: 20,
-                    fontSize: 14,
-                    color: colors.accent,
-                  },
-                ]}
-              >
-                Average per person: ${splitData.averagePerPerson}
-              </Text>
-              <Text
-                style={[
-                  detailStyles.amountText,
-                  { fontSize: 14, color: '#999' },
-                ]}
-              >
-                All settled up!
-              </Text>
+            <Text
+              style={[
+                detailStyles.amountText,
+                { fontSize: 14, color: '#999', marginBottom: 30 },
+              ]}
+            >
+              All settled up!
+            </Text>
+            <View style={detailStyles.splitButtonRow}>
               <TouchableOpacity
-                style={[detailStyles.settleButton, { marginTop: 30 }]}
+                style={detailStyles.detailedButton}
+                onPress={() => setDetailedModalVisible(true)}
+              >
+                <Text style={detailStyles.detailedButtonText}>Details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={detailStyles.settleButton}
                 onPress={() =>
                   isReadOnly ? showArchivedAlert() : handleSettle()
                 }
               >
                 <Text style={detailStyles.settleButtonText}>Settle</Text>
               </TouchableOpacity>
-            </>
-          )}
+            </View>
+          </>
         </View>
       );
     }
 
+    // Show transactions when there are outstanding balances
     return (
       <View style={detailStyles.splitCenterContainer}>
         <Text
@@ -762,14 +803,22 @@ export default function EventDetailScreen({ route, navigation }) {
             </View>
           </View>
         ))}
-        <TouchableOpacity
-          style={[detailStyles.settleButton, { marginTop: 30 }]}
-          onPress={() =>
-            isReadOnly ? showArchivedAlert() : handleSettle()
-          }
-        >
-          <Text style={detailStyles.settleButtonText}>Settle</Text>
-        </TouchableOpacity>
+        <View style={[detailStyles.splitButtonRow, { marginTop: 30 }]}>
+          <TouchableOpacity
+            style={detailStyles.detailedButton}
+            onPress={() => setDetailedModalVisible(true)}
+          >
+            <Text style={detailStyles.detailedButtonText}>Details</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={detailStyles.settleButton}
+            onPress={() =>
+              isReadOnly ? showArchivedAlert() : handleSettle()
+            }
+          >
+            <Text style={detailStyles.settleButtonText}>Settle</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -1189,6 +1238,56 @@ export default function EventDetailScreen({ route, navigation }) {
                     onPress={confirmParticipantsSelection}
                   >
                     <FontAwesome5 name="check" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* DETAILED SPENDING MODAL */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={detailedModalVisible}
+        onRequestClose={() => setDetailedModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setDetailedModalVisible(false)}>
+          <View style={globalStyles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={detailStyles.detailedModalContainer}>
+                <Text style={detailStyles.friendsModalTitle}>Spending Details</Text>
+
+                <ScrollView
+                  style={detailStyles.friendsListContainer}
+                  contentContainerStyle={{ paddingBottom: 10 }}
+                >
+                  {participants.map(person => {
+                    const spending = getSpendingPerPerson();
+                    const amount = spending[person] || 0;
+                    return (
+                      <View key={person} style={detailStyles.detailedItemRow}>
+                        <View style={detailStyles.avatarMedium}>
+                          <Text style={detailStyles.avatarTextMedium}>
+                            {person === 'Me' ? 'Me' : person.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={detailStyles.detailedPersonName}>{person}</Text>
+                        <Text style={detailStyles.detailedAmount}>
+                          ${amount.toFixed(2)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={detailStyles.friendsModalButtonRow}>
+                  <TouchableOpacity
+                    style={detailStyles.modalCloseBtn}
+                    onPress={() => setDetailedModalVisible(false)}
+                  >
+                    <FontAwesome5 name="times" size={16} color="#fff" />
                   </TouchableOpacity>
                 </View>
               </View>

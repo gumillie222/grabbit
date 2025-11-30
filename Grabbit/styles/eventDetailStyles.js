@@ -207,7 +207,7 @@ export const detailStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 40,
-    marginBottom: 50,
+    marginBottom: 15,
     alignSelf: 'flex-start',
   },
   linkText: {
@@ -343,6 +343,23 @@ export const detailStyles = StyleSheet.create({
      borderBottomColor: 'transparent',
      borderLeftWidth: 10,
      borderLeftColor: colors.accent,
+  },
+  splitButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 15,
+  },
+  detailedButton: {
+    backgroundColor: '#5A6770',
+    paddingVertical: 15,
+    paddingHorizontal: 50,
+    borderRadius: 30,
+  },
+  detailedButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontFamily: fonts.bold,
   },
   settleButton: {
     backgroundColor: colors.accent,
@@ -603,5 +620,40 @@ export const detailStyles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+
+  // --- Detailed Spending Modal ---
+  detailedModalContainer: {
+    width: '85%',
+    maxHeight: '70%',
+    backgroundColor: '#F2EFE9',
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  detailedItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  detailedPersonName: {
+    flex: 1,
+    fontSize: 18,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    marginLeft: 12,
+  },
+  detailedAmount: {
+    fontSize: 18,
+    fontFamily: fonts.bold,
+    color: colors.text,
   },
 });
