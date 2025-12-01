@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useContext, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,13 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { io } from 'socket.io-client';
 
 import { globalStyles, colors, fonts } from './styles/styles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
 import { EventContext } from './EventContext';
+import { useAuth } from './AuthContext';
+import { SERVER_URL } from './config';
 
 // ---- BASE URL ----
 const getBaseUrl = () => {
@@ -47,6 +50,41 @@ export default function EventDetailScreen({ route, navigation }) {
   const ctxUpdateItems = eventCtx?.updateItems;
   const ctxUpdateParticipants = eventCtx?.updateParticipants;
   const contextFriends = eventCtx?.friends || [];
+  const { currentUser } = useAuth();
+  const socketRef = useRef(null);
+  
+  // Get event from context to sync with
+  const contextEvent = eventCtx?.getEventById?.(eventId);
+  
+  // Check if user still has access to this event
+  useEffect(() => {
+    if (!eventId || !currentUser?.id || isNew) return;
+    
+    // Check if event exists in context and user is still a participant
+    const event = eventCtx?.getEventById?.(eventId);
+    if (!event) {
+      // Event doesn't exist in context - might have been removed
+      // Redirect to home screen
+      console.log('[EventDetailScreen] Event not found in context, redirecting to home');
+      navigation.navigate('HomeList');
+      return;
+    }
+    
+    // Check if current user is in participants (as "Me" or their actual name)
+    const userIsParticipant = event.participants?.some(p => 
+      p === 'Me' || p === currentUser.name
+    );
+    
+    if (!userIsParticipant) {
+      // User is no longer a participant - redirect to home screen
+      console.log('[EventDetailScreen] User no longer has access to event, redirecting to home');
+      Alert.alert(
+        'Access Removed',
+        'You no longer have access to this event.',
+        [{ text: 'OK', onPress: () => navigation.navigate('HomeList') }]
+      );
+    }
+  }, [eventId, currentUser?.id, contextEvent, eventCtx, navigation, isNew]);
 
   const [activeTab, setActiveTab] = useState('List');
   const [hasSettled, setHasSettled] = useState(false);
@@ -104,31 +142,242 @@ export default function EventDetailScreen({ route, navigation }) {
       'Archived events are not editable. Please recycle it back to home page if you want to make any changes.'
     );
 
-  // persist items
+  // Debounce timer refs
+  const itemsUpdateTimeoutRef = useRef(null);
+  const participantsUpdateTimeoutRef = useRef(null);
+  const lastUpdateTimestampRef = useRef(0);
+  // Flag to prevent persisting updates that came from remote (to avoid infinite loop)
+  const isApplyingRemoteUpdateRef = useRef(false);
+  // Track last persisted values to avoid re-persisting the same data
+  const lastPersistedItemsRef = useRef(null);
+  const lastPersistedParticipantsRef = useRef(null);
+
+  // Set up socket connection for real-time updates on this specific event
+  useEffect(() => {
+    if (!eventId || !currentUser?.id || isReadOnly) return;
+
+    const socket = io(SERVER_URL, {
+      transports: ['websocket'],
+      query: { userId: currentUser.id },
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('[EventDetailScreen] Socket connected for event:', eventId);
+    });
+
+    // Listen for updates to this specific event
+    socket.on('event:update', (payload) => {
+      const { eventId: updatedEventId, eventData, fromUserId, serverTs } = payload;
+      
+      // Only process updates for this event
+      if (updatedEventId !== eventId) return;
+      
+      // Ignore our own updates
+      if (fromUserId === currentUser.id) return;
+
+      // Debounce: only process if this update is newer than the last one we processed
+      if (serverTs && serverTs <= lastUpdateTimestampRef.current) {
+        console.log('[EventDetailScreen] Ignoring stale update');
+        return;
+      }
+      lastUpdateTimestampRef.current = serverTs || Date.now();
+
+      console.log('[EventDetailScreen] Received real-time update for event:', eventId);
+
+      // Debounce items update with a small delay to prevent flickering
+      if (eventData.items && Array.isArray(eventData.items)) {
+        // Clear any pending update
+        if (itemsUpdateTimeoutRef.current) {
+          clearTimeout(itemsUpdateTimeoutRef.current);
+        }
+        
+        // Update after a short delay
+        itemsUpdateTimeoutRef.current = setTimeout(() => {
+          setItems(prevItems => {
+            const prevStr = JSON.stringify(prevItems);
+            const newStr = JSON.stringify(eventData.items);
+            if (prevStr !== newStr) {
+              console.log('[EventDetailScreen] Updated items from real-time sync');
+              // Set flag to prevent persist effect from running
+              isApplyingRemoteUpdateRef.current = true;
+              // Clear flag after a delay to allow next update
+              setTimeout(() => {
+                isApplyingRemoteUpdateRef.current = false;
+              }, 500);
+              return eventData.items;
+            }
+            return prevItems;
+          });
+        }, 300); // 300ms delay to batch rapid updates
+      }
+
+      // Debounce participants update with a small delay
+      if (eventData.participants && Array.isArray(eventData.participants)) {
+        // Clear any pending update
+        if (participantsUpdateTimeoutRef.current) {
+          clearTimeout(participantsUpdateTimeoutRef.current);
+        }
+        
+        // Update after a short delay
+        participantsUpdateTimeoutRef.current = setTimeout(() => {
+          setParticipants(prevParticipants => {
+            const prevStr = JSON.stringify(prevParticipants);
+            const newStr = JSON.stringify(eventData.participants);
+            if (prevStr !== newStr) {
+              console.log('[EventDetailScreen] Updated participants from real-time sync');
+              // Set flag to prevent persist effect from running
+              isApplyingRemoteUpdateRef.current = true;
+              // Clear flag after a delay to allow next update
+              setTimeout(() => {
+                isApplyingRemoteUpdateRef.current = false;
+              }, 500);
+              return eventData.participants;
+            }
+            return prevParticipants;
+          });
+        }, 300); // 300ms delay to batch rapid updates
+      }
+    });
+
+    return () => {
+      // Clean up timeouts
+      if (itemsUpdateTimeoutRef.current) {
+        clearTimeout(itemsUpdateTimeoutRef.current);
+      }
+      if (participantsUpdateTimeoutRef.current) {
+        clearTimeout(participantsUpdateTimeoutRef.current);
+      }
+      socket.disconnect();
+    };
+  }, [eventId, currentUser?.id, isReadOnly]);
+
+  // Sync with EventContext when it updates (fallback) - with debouncing
+  const contextSyncTimeoutRef = useRef(null);
+  useEffect(() => {
+    if (!contextEvent || !eventId) return;
+    
+    // Don't sync if we're currently applying a remote update
+    if (isApplyingRemoteUpdateRef.current) return;
+    
+    // Clear any pending sync
+    if (contextSyncTimeoutRef.current) {
+      clearTimeout(contextSyncTimeoutRef.current);
+    }
+    
+    // Debounce the sync to prevent rapid updates
+    contextSyncTimeoutRef.current = setTimeout(() => {
+      // Only sync if the context event has newer data
+      if (contextEvent.items && Array.isArray(contextEvent.items)) {
+        // Check if items are different
+        const contextItemsStr = JSON.stringify(contextEvent.items);
+        const localItemsStr = JSON.stringify(items);
+        
+        if (contextItemsStr !== localItemsStr) {
+          console.log('[EventDetailScreen] Syncing items from EventContext');
+          // Set flag to prevent persist effect from running
+          isApplyingRemoteUpdateRef.current = true;
+          setItems(contextEvent.items);
+          // Clear flag after a delay
+          setTimeout(() => {
+            isApplyingRemoteUpdateRef.current = false;
+          }, 500);
+        }
+      }
+
+      if (contextEvent.participants && Array.isArray(contextEvent.participants)) {
+        const contextParticipantsStr = JSON.stringify(contextEvent.participants);
+        const localParticipantsStr = JSON.stringify(participants);
+        
+        if (contextParticipantsStr !== localParticipantsStr) {
+          console.log('[EventDetailScreen] Syncing participants from EventContext');
+          // Set flag to prevent persist effect from running
+          isApplyingRemoteUpdateRef.current = true;
+          setParticipants(contextEvent.participants);
+          // Clear flag after a delay
+          setTimeout(() => {
+            isApplyingRemoteUpdateRef.current = false;
+          }, 500);
+        }
+      }
+    }, 500); // 500ms delay for context sync (longer since it's a fallback)
+    
+    return () => {
+      if (contextSyncTimeoutRef.current) {
+        clearTimeout(contextSyncTimeoutRef.current);
+      }
+    };
+  }, [contextEvent, eventId, items, participants]);
+
+  // persist items (but skip if this update came from remote to avoid infinite loop)
   useEffect(() => {
     if (isReadOnly) return;
     if (!eventId || !ctxUpdateItems) return;
+    if (isApplyingRemoteUpdateRef.current) {
+      // Skip persisting if this update came from remote
+      return;
+    }
+    
+    // Check if items actually changed from what we last persisted
+    const itemsStr = JSON.stringify(items);
+    if (lastPersistedItemsRef.current === itemsStr) {
+      // Already persisted this exact data, skip
+      return;
+    }
+    
+    lastPersistedItemsRef.current = itemsStr;
     ctxUpdateItems(eventId, items);
-  }, [items, eventId]);
+  }, [items, eventId, ctxUpdateItems, isReadOnly]);
 
-  // persist participants
+  // persist participants (but skip if this update came from remote to avoid infinite loop)
   useEffect(() => {
     if (isReadOnly) return;
     if (!eventId || !ctxUpdateParticipants) return;
+    if (isApplyingRemoteUpdateRef.current) {
+      // Skip persisting if this update came from remote
+      return;
+    }
+    
+    // Check if participants actually changed from what we last persisted
+    const participantsStr = JSON.stringify(participants);
+    if (lastPersistedParticipantsRef.current === participantsStr) {
+      // Already persisted this exact data, skip
+      return;
+    }
+    
+    lastPersistedParticipantsRef.current = participantsStr;
     ctxUpdateParticipants(eventId, participants);
-  }, [participants, eventId]);
+  }, [participants, eventId, ctxUpdateParticipants, isReadOnly]);
 
   const activeItems = items.filter(i => !i.bought);
   const recentItems = items.filter(i => i.bought);
 
   // --- SPLIT LOGIC (uses sharedBy if present) ---
   const splitData = useMemo(() => {
+    // Helper to normalize a name to match the participants array format
+    // Participants array uses "Me" for the current user, actual names for others
+    const normalizeToParticipantName = (name) => {
+      if (!name) return 'Me';
+      // If name matches current user's name, convert to "Me" to match participants array
+      if (name === currentUser?.name) return 'Me';
+      // If it's already "Me", keep it
+      if (name === 'Me') return 'Me';
+      // Otherwise, use the name as-is (should match a participant name)
+      return name;
+    };
+
     const balances = {};
     participants.forEach(p => (balances[p] = 0));
 
-    const bought = items.filter(
-      item => item.bought && item.price && parseFloat(item.price) > 0
-    );
+    // Filter bought items to only include those with valid buyers in participants
+    const bought = items.filter(item => {
+      if (!item.bought || !item.price || parseFloat(item.price) <= 0) return false;
+      const rawBuyer = item.claimedBy ?? 'Me';
+      const buyer = normalizeToParticipantName(rawBuyer);
+      return participants.includes(buyer);
+    });
+    
+    // Calculate total spent only from items with valid participants
     const totalSpent = bought.reduce(
       (sum, item) => sum + parseFloat(item.price),
       0
@@ -136,15 +385,52 @@ export default function EventDetailScreen({ route, navigation }) {
 
     bought.forEach(item => {
       const price = parseFloat(item.price);
-      const sharers =
-        Array.isArray(item.sharedBy) && item.sharedBy.length > 0
-          ? item.sharedBy
-          : [item.claimedBy ?? 'Me'];
-
-      const buyer = item.claimedBy ?? 'Me';
+      const rawBuyer = item.claimedBy ?? 'Me';
+      const buyer = normalizeToParticipantName(rawBuyer);
+      
+      // Skip items where the buyer is not in the current participants list
+      if (!participants.includes(buyer)) {
+        console.log(`[Split] Skipping item "${item.name}" - buyer "${buyer}" is not in participants`);
+        return;
+      }
+      
+      // Get sharers, filtering to only include current participants
+      let rawSharers = [];
+      if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
+        // Filter sharedBy to only include current participants
+        rawSharers = item.sharedBy.filter(name => {
+          const normalized = normalizeToParticipantName(name);
+          return participants.includes(normalized);
+        });
+      }
+      
+      // If no valid sharers after filtering, default to buyer only
+      if (rawSharers.length === 0) {
+        rawSharers = [buyer];
+      }
+      
+      // Normalize sharer names to match participants array format
+      const sharers = rawSharers.map(s => normalizeToParticipantName(s))
+        .filter(s => participants.includes(s)); // Double-check all sharers are in participants
+      
+      // Skip if no valid sharers remain
+      if (sharers.length === 0) {
+        console.log(`[Split] Skipping item "${item.name}" - no valid sharers after filtering`);
+        return;
+      }
+      
       const perPerson = price / sharers.length;
 
+      // Ensure buyer and all sharers have balance entries
+      if (!balances[buyer]) balances[buyer] = 0;
       sharers.forEach(person => {
+        // Skip if person is not in participants (shouldn't happen after filtering, but safety check)
+        if (!participants.includes(person)) {
+          console.log(`[Split] Skipping sharer "${person}" - not in participants`);
+          return;
+        }
+        
+        if (!balances[person]) balances[person] = 0;
         if (person === buyer) return;
         balances[person] -= perPerson; // they owe
         balances[buyer] += perPerson; // buyer receives
@@ -184,7 +470,7 @@ export default function EventDetailScreen({ route, navigation }) {
     }
 
     return { balances, transactions, totalSpent: totalSpent.toFixed(2) };
-  }, [items, participants]);
+  }, [items, participants, currentUser?.name]);
 
   const closeAiModal = () => {
     setAiModalVisible(false);
@@ -502,44 +788,158 @@ export default function EventDetailScreen({ route, navigation }) {
     setTempParticipants([]);
   };
 
-  const confirmParticipantsSelection = () => {
+  const confirmParticipantsSelection = async () => {
     // New participant list: Me + whatever was selected
     const newParticipants = ['Me', ...tempParticipants];
-  
-    // Update participants state
-    setParticipants(newParticipants);
-  
-    // Clean up all items so sharedBy/claimedBy never reference removed people
-    setItems(currentItems =>
-      currentItems.map(item => {
-        const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
-  
-        // Keep only sharers that are still in the event
-        const cleanedSharedBy = currentSharers.filter(name =>
-          newParticipants.includes(name)
-        );
-  
-        // If claimedBy has been removed, fall back to "Me"
-        let cleanedClaimedBy = item.claimedBy;
-        if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
-          cleanedClaimedBy = 'Me';
-        }
-  
-        return {
-          ...item,
-          sharedBy: cleanedSharedBy,
-          claimedBy: cleanedClaimedBy,
-        };
-      })
+    
+    // Check if any participants are being removed
+    const removedParticipants = participants.filter(
+      p => p !== 'Me' && !newParticipants.includes(p)
     );
+    
+    // If someone is being removed, show confirmation dialog
+    if (removedParticipants.length > 0) {
+      const removedNames = removedParticipants.join(', ');
+      Alert.alert(
+        'Remove Participants?',
+        `Are you sure you want to remove ${removedNames} from this event? They will no longer have access to it.`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              // Reset temp participants to current state
+              const currentFriends = participants.filter(name => name !== 'Me');
+              setTempParticipants(currentFriends);
+            },
+          },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                // Update participants state
+                setParticipants(newParticipants);
+                
+                // Clean up all items so sharedBy/claimedBy never reference removed people
+                setItems(currentItems =>
+                  currentItems.map(item => {
+                    const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
+            
+                    // Keep only sharers that are still in the event
+                    const cleanedSharedBy = currentSharers.filter(name =>
+                      newParticipants.includes(name)
+                    );
+            
+                    // If claimedBy has been removed, fall back to "Me"
+                    let cleanedClaimedBy = item.claimedBy;
+                    if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
+                      cleanedClaimedBy = 'Me';
+                    }
+                    
+                    // If sharedBy becomes empty after cleaning and item is bought, 
+                    // default to the buyer (or "Me" if buyer was removed)
+                    let finalSharedBy = cleanedSharedBy;
+                    if (item.bought && finalSharedBy.length === 0) {
+                      finalSharedBy = [cleanedClaimedBy || 'Me'];
+                    }
+            
+                    return {
+                      ...item,
+                      sharedBy: finalSharedBy,
+                      claimedBy: cleanedClaimedBy,
+                    };
+                  })
+                );
+                
+                // Also clean the current selection used in the buy modal
+                setBuySharedBy(prev => {
+                  const filtered = prev.filter(name => newParticipants.includes(name));
+                  return filtered.length ? filtered : ['Me'];
+                });
+                
+                // Sync with backend via EventContext
+                if (ctxUpdateParticipants && eventId) {
+                  await ctxUpdateParticipants(eventId, newParticipants);
+                }
+                
+                setParticipantsModalVisible(false);
+                setTempParticipants([]);
+              } catch (error) {
+                console.error('[EventDetailScreen] Error removing participants:', error);
+                Alert.alert(
+                  'Error',
+                  'Failed to remove participants. Please try again.',
+                  [{ text: 'OK' }]
+                );
+                // Reset temp participants to current state on error
+                const currentFriends = participants.filter(name => name !== 'Me');
+                setTempParticipants(currentFriends);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+    
+    // No participants removed, proceed with update
+    try {
+      // Update participants state
+      setParticipants(newParticipants);
+      
+      // Clean up all items so sharedBy/claimedBy never reference removed people
+      setItems(currentItems =>
+        currentItems.map(item => {
+          const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
   
-    // Also clean the current selection used in the buy modal
-    setBuySharedBy(prev => {
-      const filtered = prev.filter(name => newParticipants.includes(name));
-      return filtered.length ? filtered : ['Me'];
-    });
+          // Keep only sharers that are still in the event
+          const cleanedSharedBy = currentSharers.filter(name =>
+            newParticipants.includes(name)
+          );
   
-    setParticipantsModalVisible(false);
+          // If claimedBy has been removed, fall back to "Me"
+          let cleanedClaimedBy = item.claimedBy;
+          if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
+            cleanedClaimedBy = 'Me';
+          }
+          
+          // If sharedBy becomes empty after cleaning and item is bought, 
+          // default to the buyer (or "Me" if buyer was removed)
+          let finalSharedBy = cleanedSharedBy;
+          if (item.bought && finalSharedBy.length === 0) {
+            finalSharedBy = [cleanedClaimedBy || 'Me'];
+          }
+  
+          return {
+            ...item,
+            sharedBy: finalSharedBy,
+            claimedBy: cleanedClaimedBy,
+          };
+        })
+      );
+      
+      // Also clean the current selection used in the buy modal
+      setBuySharedBy(prev => {
+        const filtered = prev.filter(name => newParticipants.includes(name));
+        return filtered.length ? filtered : ['Me'];
+      });
+      
+      // Sync with backend via EventContext
+      if (ctxUpdateParticipants && eventId) {
+        await ctxUpdateParticipants(eventId, newParticipants);
+      }
+      
+      setParticipantsModalVisible(false);
+      setTempParticipants([]);
+    } catch (error) {
+      console.error('[EventDetailScreen] Error updating participants:', error);
+      Alert.alert(
+        'Error',
+        'Failed to update participants. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
   
 
@@ -552,14 +952,28 @@ export default function EventDetailScreen({ route, navigation }) {
       .filter(item => item.bought && item.price && parseFloat(item.price) > 0)
       .forEach(item => {
         const price = parseFloat(item.price);
-        const sharers =
+        let rawSharers =
           Array.isArray(item.sharedBy) && item.sharedBy.length > 0
             ? item.sharedBy
             : [item.claimedBy ?? 'Me'];
+        
+        // Filter sharers to only include current participants
+        const sharers = rawSharers.filter(name => {
+          // Normalize name: if it's the current user's name, treat as "Me"
+          const normalizedName = name === currentUser?.name ? 'Me' : name;
+          return participants.includes(normalizedName);
+        });
+        
+        // Skip items with no valid sharers
+        if (sharers.length === 0) return;
 
         const perPerson = price / sharers.length;
         sharers.forEach(person => {
-          spending[person] = (spending[person] || 0) + perPerson;
+          // Normalize person name for spending calculation
+          const normalizedPerson = person === currentUser?.name ? 'Me' : person;
+          if (participants.includes(normalizedPerson)) {
+            spending[normalizedPerson] = (spending[normalizedPerson] || 0) + perPerson;
+          }
         });
       });
 
@@ -693,7 +1107,9 @@ export default function EventDetailScreen({ route, navigation }) {
             >
               {item.claimedBy === 'Me' ? (
                 <View style={detailStyles.avatarSmallSelected}>
-                  <Text style={detailStyles.avatarTextSmall}>Me</Text>
+                  <Text style={detailStyles.avatarTextSmall}>
+                    {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
+                  </Text>
                 </View>
               ) : (
                 <View
@@ -720,7 +1136,9 @@ export default function EventDetailScreen({ route, navigation }) {
         {/* buyer badge on recent list */}
         {!isActiveList && item.claimedBy === 'Me' && (
           <View style={detailStyles.avatarSmall}>
-            <Text style={detailStyles.avatarTextSmall}>Me</Text>
+            <Text style={detailStyles.avatarTextSmall}>
+              {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
+            </Text>
           </View>
         )}
       </View>
@@ -774,10 +1192,18 @@ export default function EventDetailScreen({ route, navigation }) {
       {/* RECENTLY BOUGHT ITEMS WITH SIMPLE SECOND ROW */}
       {showRecent &&
         recentItems.map(item => {
-          const sharers =
+          // Get sharers and filter to only include current participants
+          let rawSharers =
             Array.isArray(item.sharedBy) && item.sharedBy.length > 0
               ? item.sharedBy
               : [item.claimedBy ?? 'Me'];
+          
+          // Filter sharers to only include current participants
+          const sharers = rawSharers.filter(name => {
+            // Normalize name: if it's the current user's name, treat as "Me"
+            const normalizedName = name === currentUser?.name ? 'Me' : name;
+            return participants.includes(normalizedName);
+          });
 
           return (
             <View key={item.id} style={{ marginBottom: 12 }}>
@@ -807,20 +1233,28 @@ export default function EventDetailScreen({ route, navigation }) {
                   shared by
                 </Text>
 
-                {sharers.map(name => (
-                  <View
-                    key={name}
-                    style={
-                      name === 'Me'
-                        ? [detailStyles.avatarSmallSelected, { marginRight: 6 }]
-                        : [detailStyles.avatarSmall, { marginRight: 6 }]
-                    }
-                  >
-                    <Text style={detailStyles.avatarTextSmall}>
-                      {name === 'Me' ? 'Me' : name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                ))}
+                {sharers.map((name, index) => {
+                  // Normalize name for display
+                  const displayName = name === currentUser?.name ? 'Me' : name;
+                  // Use index in key to avoid duplicate "Me" keys
+                  const uniqueKey = `${item.id}-${name}-${index}`;
+                  return (
+                    <View
+                      key={uniqueKey}
+                      style={
+                        displayName === 'Me'
+                          ? [detailStyles.avatarSmallSelected, { marginRight: 6 }]
+                          : [detailStyles.avatarSmall, { marginRight: 6 }]
+                      }
+                    >
+                      <Text style={detailStyles.avatarTextSmall}>
+                        {displayName === 'Me' 
+                          ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
+                          : displayName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  );
+                })}
 
                 <TouchableOpacity
                   style={[detailStyles.shareEditButton, { marginLeft: 4 }]}
@@ -841,7 +1275,9 @@ export default function EventDetailScreen({ route, navigation }) {
 
   // ---- SPLIT TAB ----
   const renderSplitTab = () => {
-    const getInitial = name => name.charAt(0).toUpperCase();
+    const getInitial = name => {
+      return name.charAt(0).toUpperCase();
+    };
     const allBalancesSettled = Object.values(splitData.balances).every(
       bal => Math.abs(bal) < 0.01
     );
@@ -934,13 +1370,22 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   };
 
-  // effective friends for participants picker
-  const effectiveFriends =
-    contextFriends && contextFriends.length > 0
-      ? contextFriends
-      : participants
-          .filter(name => name !== 'Me')
-          .map(name => ({ id: name, name }));
+  // effective friends for participants picker - always use backend friends
+  // Filter to only include friends that are in the current participants list
+  const effectiveFriends = useMemo(() => {
+    if (!contextFriends || contextFriends.length === 0) {
+      // If no friends from backend, return empty array (shouldn't happen if backend is working)
+      console.warn('[EventDetailScreen] No friends available from backend');
+      return [];
+    }
+    
+    // Filter friends to only include those who are current participants
+    // This ensures the picker only shows relevant friends
+    const participantNames = participants.filter(p => p !== 'Me');
+    return contextFriends.filter(friend => 
+      participantNames.includes(friend.name)
+    );
+  }, [contextFriends, participants]);
 
   // ---- RENDER ----
   return (
@@ -978,16 +1423,10 @@ export default function EventDetailScreen({ route, navigation }) {
           {participants.map((participant, index) => (
             <View
               key={index}
-              style={
-                participant === 'Me'
-                  ? detailStyles.avatarSmallSelected
-                  : detailStyles.avatarSmall
-              }
+              style={detailStyles.avatarSmall }
             >
               <Text style={detailStyles.avatarTextSmall}>
-                {participant === 'Me'
-                  ? 'Me'
-                  : participant.charAt(0).toUpperCase()}
+                {participant.charAt(0).toUpperCase()}
               </Text>
             </View>
           ))}
@@ -1071,14 +1510,11 @@ export default function EventDetailScreen({ route, navigation }) {
                 {buySharedBy.map(name => (
                   <View
                     key={name}
-                    style={
-                      name === 'Me'
-                        ? [detailStyles.avatarSmallSelected, { marginRight: 6 }]
-                        : [detailStyles.avatarSmall, { marginRight: 6 }]
+                    style={[detailStyles.avatarSmall, { marginRight: 6 }]
                     }
                   >
                     <Text style={detailStyles.avatarTextSmall}>
-                      {name === 'Me' ? 'Me' : name.charAt(0).toUpperCase()}
+                      {name.charAt(0).toUpperCase()}
                     </Text>
                   </View>
                 ))}
@@ -1464,9 +1900,7 @@ export default function EventDetailScreen({ route, navigation }) {
                       >
                         <View style={detailStyles.avatarMedium}>
                           <Text style={detailStyles.avatarTextMedium}>
-                            {person === 'Me'
-                              ? 'Me'
-                              : person.charAt(0).toUpperCase()}
+                            {person.charAt(0).toUpperCase()}
                           </Text>
                         </View>
                         <Text style={detailStyles.detailedPersonName}>

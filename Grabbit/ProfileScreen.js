@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,15 +11,36 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { io } from 'socket.io-client';
 
 import { profileStyles } from './styles/profileStyles';
 import { globalStyles, colors } from './styles/styles';
 import { EventContext } from './EventContext';
 import { useAuth } from './AuthContext';
+import { api } from './api';
+import { SERVER_URL } from './config';
 
 export default function ProfileScreen({ navigation }) {
-  const { archivedEvents, unarchiveEvent, friends, setFriends, profile, setProfile } = useContext(EventContext);
-  const { logout } = useAuth();
+  const { archivedEvents, unarchiveEvent, friends, setFriends } = useContext(EventContext);
+  const { currentUser, logout, updateUser } = useAuth();
+  const socketRef = useRef(null);
+  
+  const [profile, setProfile] = useState({
+    name: currentUser?.name || 'Grab Bit',
+    phone: currentUser?.phone || '508-667-1234',
+    email: currentUser?.email || 'grabbit@upenn.edu',
+  });
+
+  // Sync profile with currentUser when it changes
+  useEffect(() => {
+    if (currentUser) {
+      setProfile({
+        name: currentUser.name || 'Grab Bit',
+        phone: currentUser.phone || '508-667-1234',
+        email: currentUser.email || 'grabbit@upenn.edu',
+      });
+    }
+  }, [currentUser]);
 
   const [editVisible, setEditVisible] = useState(false);
   const [draftName, setDraftName] = useState(profile.name);
@@ -33,11 +54,9 @@ export default function ProfileScreen({ navigation }) {
   const [newFriendPhone, setNewFriendPhone] = useState('');
   const [newFriendEmail, setNewFriendEmail] = useState('');
 
-  // mock incoming friend requests (local-only)
-  const [friendRequests, setFriendRequests] = useState([
-    { id: 101, name: 'Diana', contact: 'diana@example.com' },
-    { id: 102, name: 'Evan', contact: '555-777-8888' },
-  ]);
+  // Friend requests from backend
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
 
   // --- Archived event detail modal state ---
   const [selectedArchivedEvent, setSelectedArchivedEvent] = useState(null);
@@ -55,44 +74,148 @@ export default function ProfileScreen({ navigation }) {
     setEditVisible(true);
   };
 
-  const saveEdits = () => {
-    setProfile(prev => ({
-      ...prev,
-      name: draftName.trim() || prev.name,
-      phone: draftPhone.trim() || prev.phone,
-      email: draftEmail.trim() || prev.email,
-    }));
+  // Load friends and friend requests on mount
+  useEffect(() => {
+    if (currentUser?.id) {
+      loadFriends();
+      loadFriendRequests();
+      setupSocket();
+    }
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [currentUser?.id]);
+
+  const setupSocket = () => {
+    if (!currentUser?.id) return;
+    
+    const socket = io(SERVER_URL, {
+      transports: ['websocket'],
+      query: { userId: currentUser.id },
+    });
+    socketRef.current = socket;
+
+    socket.on('friend:request', (payload) => {
+      loadFriendRequests(); // Reload requests when new one arrives
+    });
+
+    socket.on('friend:accepted', (payload) => {
+      loadFriends(); // Reload friends when request is accepted
+      loadFriendRequests(); // Reload requests to remove accepted one
+    });
+
+    socket.on('friend:declined', (payload) => {
+      loadFriendRequests(); // Reload requests when declined
+    });
+  };
+
+  const loadFriends = async () => {
+    if (!currentUser?.id) return;
+    try {
+      setLoadingFriends(true);
+      const response = await api.getFriends(currentUser.id);
+      setFriends(response.friends || []);
+    } catch (error) {
+      console.error('Error loading friends:', error);
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const loadFriendRequests = async () => {
+    if (!currentUser?.id) return;
+    try {
+      const response = await api.getFriendRequests(currentUser.id);
+      // Format received requests for display
+      const formatted = (response.received || []).map(req => ({
+        id: req.id,
+        name: req.fromUser?.name || 'Unknown',
+        contact: req.fromUser?.email || req.fromUser?.phone || '',
+        fromUser: req.fromUser,
+        fromUserId: req.fromUserId,
+      }));
+      setFriendRequests(formatted);
+    } catch (error) {
+      console.error('Error loading friend requests:', error);
+    }
+  };
+
+  const saveEdits = async () => {
+    const updated = {
+      name: draftName.trim() || profile.name,
+      phone: draftPhone.trim() || profile.phone,
+      email: draftEmail.trim() || profile.email,
+    };
+    setProfile(updated);
+    if (currentUser) {
+      await updateUser(updated);
+    }
     setEditVisible(false);
   };
 
-  const handleSendFriendRequest = () => {
+  const handleSendFriendRequest = async () => {
     if (!newFriendPhone.trim() && !newFriendEmail.trim()) {
       Alert.alert('Missing info', 'Please enter a phone number or email.');
       return;
     }
 
-    // In a real app you’d call the backend here.
-    Alert.alert('Request sent', 'Your friend request has been sent!');
-    setNewFriendName('');
-    setNewFriendPhone('');
-    setNewFriendEmail('');
+    if (!currentUser?.id) {
+      Alert.alert('Error', 'You must be logged in to send friend requests.');
+      return;
+    }
+
+    try {
+      // First, search for the user
+      const searchResult = await api.searchUsers(
+        newFriendEmail.trim() || undefined,
+        newFriendPhone.trim() || undefined
+      );
+
+      if (!searchResult.users || searchResult.users.length === 0) {
+        Alert.alert('User not found', 'No user found with that email or phone number.');
+        return;
+      }
+
+      const targetUser = searchResult.users[0];
+      if (targetUser.id === currentUser.id) {
+        Alert.alert('Error', 'You cannot send a friend request to yourself.');
+        return;
+      }
+
+      // Send friend request
+      await api.sendFriendRequest(currentUser.id, targetUser.id);
+      Alert.alert('Request sent', 'Your friend request has been sent!');
+      setNewFriendName('');
+      setNewFriendPhone('');
+      setNewFriendEmail('');
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to send friend request.');
+    }
   };
 
-  const handleAcceptRequest = (request) => {
-    setFriends(prev => [
-      {
-        id: Date.now(),
-        name: request.name,
-        phone: request.contact.match(/\d/) ? request.contact : '',
-        email: request.contact.includes('@') ? request.contact : '',
-      },
-      ...prev,
-    ]);
-    setFriendRequests(prev => prev.filter(r => r.id !== request.id));
+  const handleAcceptRequest = async (request) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      await api.acceptFriendRequest(request.id, currentUser.id);
+      // Friends and requests will be reloaded via socket event
+      Alert.alert('Success', `You are now friends with ${request.name}!`);
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to accept friend request.');
+    }
   };
 
-  const handleDeclineRequest = (id) => {
-    setFriendRequests(prev => prev.filter(r => r.id !== id));
+  const handleDeclineRequest = async (request) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      await api.declineFriendRequest(request.id, currentUser.id);
+      // Requests will be reloaded via socket event
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to decline friend request.');
+    }
   };
 
   const handleOpenFriendModal = () => {
@@ -213,7 +336,9 @@ export default function ProfileScreen({ navigation }) {
 
         {/* Avatar */}
         <View style={profileStyles.avatarLarge}>
-          <Text style={profileStyles.avatarTextLarge}>Me</Text>
+          <Text style={profileStyles.avatarTextLarge}>
+            {profile.name.charAt(0).toUpperCase()}
+          </Text>
         </View>
 
         {/* User Info – using the larger base sizes from profileStyles */}
@@ -490,7 +615,7 @@ export default function ProfileScreen({ navigation }) {
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={profileStyles.requestDecline}
-                            onPress={() => handleDeclineRequest(req.id)}
+                            onPress={() => handleDeclineRequest(req)}
                           >
                             <FontAwesome5 name="times" size={12} color="#fff" />
                           </TouchableOpacity>

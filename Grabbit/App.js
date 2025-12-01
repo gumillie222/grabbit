@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import 'react-native-gesture-handler';
 import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -71,7 +71,13 @@ export default function App() {
 function AppNavigator() {
   const { isAuthed, authLoading } = useAuth();
 
-  if (authLoading) return null;
+  if (authLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#e8e5dc' }}>
+        <ActivityIndicator size="large" color="#e55347" />
+      </View>
+    );
+  }
 
   if (!isAuthed) {
     return <LoginScreen />;

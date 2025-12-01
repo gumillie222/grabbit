@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,14 @@ import {
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { globalStyles, colors } from './styles/styles.js';
 import { homeStyles } from './styles/homeStyles.js';
 import AddEventModal from './AddEventModal.js';
 import { EventContext } from './EventContext';
+import { useAuth } from './AuthContext';
+import { api } from './api';
 
 export default function HomeScreen({ navigation }) {
   const {
@@ -26,6 +29,7 @@ export default function HomeScreen({ navigation }) {
     updateParticipants,
     deleteEvent,
     archiveEvent,
+    reloadEvents,
     // friends list should be kept in EventContext (and updated from ProfileScreen)
     friends = [],
   } = useContext(EventContext);
@@ -33,6 +37,16 @@ export default function HomeScreen({ navigation }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [eventToDelete, setEventToDelete] = useState(null);
+
+  // Reload events when screen comes into focus (for real-time updates)
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[HomeScreen] Screen focused, reloading events...');
+      if (reloadEvents) {
+        reloadEvents();
+      }
+    }, [reloadEvents])
+  );
 
   const handleUpdateItems = (eventId, updatedItems) => {
     updateItems(eventId, updatedItems);

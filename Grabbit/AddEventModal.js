@@ -14,6 +14,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { globalStyles, colors } from './styles/styles.js';
 import { homeStyles } from './styles/homeStyles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
+import { useAuth } from './AuthContext';
 
 // Determine the correct BASE_URL based on platform
 const getBaseUrl = () => {
@@ -39,6 +40,7 @@ export default function AddEventModal({
   // friends should be passed from HomeScreen/EventContext so it matches Profile
   friends = [],
 }) {
+  const { currentUser } = useAuth();
   const [newGroupName, setNewGroupName] = useState('');
   const [newComments, setNewComments] = useState('');
   const [aiSuggestions, setAiSuggestions] = useState([]);
@@ -84,86 +86,103 @@ export default function AddEventModal({
 
   // Fetch AI suggestions when user inputs group name or comments
   useEffect(() => {
+    let timeoutId = null;
+    let abortController = null;
+
     const fetchSuggestions = async () => {
-      if (newGroupName.trim().length > 0 || newComments.trim().length > 0) {
-        setIsLoadingSuggestions(true);
-
-        const timeoutId = setTimeout(async () => {
-          try {
-            const description = `${newGroupName} ${newComments}`.trim();
-            const url = `${BASE_URL}/api/suggestions`;
-
-            const controller = new AbortController();
-            const fetchTimeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-              },
-              body: JSON.stringify({
-                description,
-                pastItems: [],
-              }),
-              signal: controller.signal,
-            });
-
-            clearTimeout(fetchTimeout);
-
-            if (!res.ok) {
-              throw new Error('Server error');
-            }
-
-            const data = await res.json(); // { suggestions: string[] }
-
-            const mappedSuggestions = (data.suggestions || []).map(
-              (name, idx) => ({
-                id: `ai-${Date.now()}-${idx}`,
-                name,
-              })
-            );
-
-            setAiSuggestions(mappedSuggestions);
-            setIsConnected(true);
-          } catch (error) {
-            if (error.name !== 'AbortError') {
-              console.log(
-                '[AddEventModal] Using fallback items (connection unavailable)'
-              );
-            }
-
-            setIsConnected(false);
-
-            const fallbackItems = [
-              { id: 'fallback-1', name: 'Milk' },
-              { id: 'fallback-2', name: 'Bread' },
-              { id: 'fallback-3', name: 'Eggs' },
-              { id: 'fallback-4', name: 'Butter' },
-              { id: 'fallback-5', name: 'Cheese' },
-              { id: 'fallback-6', name: 'Chicken' },
-              { id: 'fallback-7', name: 'Rice' },
-              { id: 'fallback-8', name: 'Pasta' },
-              { id: 'fallback-9', name: 'Tomatoes' },
-              { id: 'fallback-10', name: 'Onions' },
-              { id: 'fallback-11', name: 'Bananas' },
-              { id: 'fallback-12', name: 'Yogurt' },
-            ];
-
-            setAiSuggestions(fallbackItems);
-          } finally {
-            setIsLoadingSuggestions(false);
-          }
-        }, 800); // debounce
-
-        return () => clearTimeout(timeoutId);
-      } else {
+      const description = `${newGroupName} ${newComments}`.trim();
+      
+      if (description.length === 0) {
         setAiSuggestions([]);
         setIsLoadingSuggestions(false);
+        return;
       }
+
+      setIsLoadingSuggestions(true);
+
+      // Cancel any previous request
+      if (abortController) {
+        abortController.abort();
+      }
+      abortController = new AbortController();
+
+      timeoutId = setTimeout(async () => {
+        try {
+          const url = `${BASE_URL}/api/suggestions`;
+          const fetchTimeout = setTimeout(() => abortController.abort(), 5000); // 5s timeout
+
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              description,
+              pastItems: [],
+            }),
+            signal: abortController.signal,
+          });
+
+          clearTimeout(fetchTimeout);
+
+          if (!res.ok) {
+            throw new Error('Server error');
+          }
+
+          const data = await res.json(); // { suggestions: string[] }
+
+          const mappedSuggestions = (data.suggestions || []).map(
+            (name, idx) => ({
+              id: `ai-${Date.now()}-${idx}`,
+              name,
+            })
+          );
+
+          setAiSuggestions(mappedSuggestions);
+          setIsConnected(true);
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            console.log(
+              '[AddEventModal] Using fallback items (connection unavailable)'
+            );
+          }
+
+          setIsConnected(false);
+
+          const fallbackItems = [
+            { id: 'fallback-1', name: 'Milk' },
+            { id: 'fallback-2', name: 'Bread' },
+            { id: 'fallback-3', name: 'Eggs' },
+            { id: 'fallback-4', name: 'Butter' },
+            { id: 'fallback-5', name: 'Cheese' },
+            { id: 'fallback-6', name: 'Chicken' },
+            { id: 'fallback-7', name: 'Rice' },
+            { id: 'fallback-8', name: 'Pasta' },
+            { id: 'fallback-9', name: 'Tomatoes' },
+            { id: 'fallback-10', name: 'Onions' },
+            { id: 'fallback-11', name: 'Bananas' },
+            { id: 'fallback-12', name: 'Yogurt' },
+          ];
+
+          setAiSuggestions(fallbackItems);
+        } finally {
+          setIsLoadingSuggestions(false);
+        }
+      }, 1500); // Debounce to 1.5 seconds
     };
 
     fetchSuggestions();
+
+    // Cleanup on unmount or dependency change
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (abortController) {
+        abortController.abort();
+      }
+    };
   }, [newGroupName, newComments]);
 
   const handleSelectSuggestion = (item) => {
@@ -295,7 +314,7 @@ export default function AddEventModal({
                 >
                   <Text style={detailStyles.avatarTextSmall}>
                     {participant === 'Me'
-                      ? 'Me'
+                      ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
                       : participant.charAt(0).toUpperCase()}
                   </Text>
                 </View>
