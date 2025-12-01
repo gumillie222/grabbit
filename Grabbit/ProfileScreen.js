@@ -15,13 +15,11 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { profileStyles } from './styles/profileStyles';
 import { globalStyles, colors } from './styles/styles';
 import { EventContext } from './EventContext';
+import { useAuth } from './AuthContext';
 
 export default function ProfileScreen({ navigation }) {
-  const [profile, setProfile] = useState({
-    name: 'Grab Bit',
-    phone: '508-667-1234',
-    email: 'grabbit@upenn.edu',
-  });
+  const { archivedEvents, unarchiveEvent, friends, setFriends, profile, setProfile } = useContext(EventContext);
+  const { logout } = useAuth();
 
   const [editVisible, setEditVisible] = useState(false);
   const [draftName, setDraftName] = useState(profile.name);
@@ -29,9 +27,6 @@ export default function ProfileScreen({ navigation }) {
   const [draftEmail, setDraftEmail] = useState(profile.email);
 
   const [activeTab, setActiveTab] = useState('friends'); // 'friends' | 'archive'
-
-  // --- Friends state ---
-  const { archivedEvents, unarchiveEvent, friends, setFriends } = useContext(EventContext);
 
   // used in the "add friend" modal
   const [newFriendName, setNewFriendName] = useState('');
@@ -302,6 +297,16 @@ export default function ProfileScreen({ navigation }) {
               <Text style={profileStyles.settingsBullet}>• Check items when bought and enter prices.</Text>
               <Text style={profileStyles.settingsBullet}>• Use “The Split” tab to see who owes what.</Text>
             </View>
+
+            <TouchableOpacity
+              style={[profileStyles.friendModalPrimaryButton, { alignSelf: 'flex-start', marginTop: 8 }]}
+              onPress={logout}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <FontAwesome5 name="sign-out-alt" size={14} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={profileStyles.friendModalPrimaryText}>Log out</Text>
+              </View>
+            </TouchableOpacity>
 
             <Text style={profileStyles.settingsFooter}>Version 1.0 · Demo build</Text>
           </View>

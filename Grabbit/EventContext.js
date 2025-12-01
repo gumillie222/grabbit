@@ -1,10 +1,13 @@
 // EventContext.js
-import React, { createContext, useState } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import eventsData from './data.json';
 
 export const EventContext = createContext();
 
 export const EventProvider = ({ children }) => {
+  const STORAGE_KEY = 'grabbit:data:v1';
+
   // Active events (home)
   const [events, setEvents] = useState(
     eventsData.map(e => ({
@@ -23,6 +26,59 @@ export const EventProvider = ({ children }) => {
     { id: 2, name: 'Ben',  phone: '555-333-4444', email: 'ben@example.com' },
     { id: 3, name: 'Chris', phone: '555-555-6666', email: 'chris@example.com' },
   ]);
+  // Profile info
+  const [profile, setProfile] = useState({
+    name: 'Grab Bit',
+    phone: '508-667-1234',
+    email: 'grabbit@upenn.edu',
+  });
+
+  const hasHydrated = useRef(false);
+  const saveTimeout = useRef(null);
+
+  // Load persisted data once
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.events) setEvents(parsed.events);
+          if (parsed.archivedEvents) setArchivedEvents(parsed.archivedEvents);
+          if (parsed.friends) setFriends(parsed.friends);
+          if (parsed.profile) setProfile(parsed.profile);
+        }
+      } catch (err) {
+        console.log('[EventContext] Failed to load persisted data:', err.message);
+      } finally {
+        hasHydrated.current = true;
+      }
+    };
+    load();
+  }, []);
+
+  // Save to storage with light debounce
+  useEffect(() => {
+    if (!hasHydrated.current) return;
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(async () => {
+      try {
+        const payload = JSON.stringify({
+          events,
+          archivedEvents,
+          friends,
+          profile,
+        });
+        await AsyncStorage.setItem(STORAGE_KEY, payload);
+      } catch (err) {
+        console.log('[EventContext] Failed to save data:', err.message);
+      }
+    }, 300);
+
+    return () => {
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    };
+  }, [events, archivedEvents, friends, profile]);
 
   // --- CRUD helpers ---
 
@@ -108,6 +164,9 @@ export const EventProvider = ({ children }) => {
         // shared friends state
         friends,
         setFriends,
+        // profile state
+        profile,
+        setProfile,
       }}
     >
       {children}

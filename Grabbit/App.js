@@ -19,6 +19,8 @@ import {
 import HomeStackNavigator from './HomeStackNavigator'; 
 import ProfileScreen from './ProfileScreen';
 import { EventProvider } from './EventContext';
+import { AuthProvider, useAuth } from './AuthContext';
+import LoginScreen from './LoginScreen';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -53,32 +55,47 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {/* ⬇️ wrap everything that needs events in EventProvider */}
-      <EventProvider>
-        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-          <NavigationContainer>
-            <Tab.Navigator
-              screenOptions={({ route }) => ({
-                headerTitleAlign: 'center',
-                tabBarActiveTintColor: '#e55347',
-                tabBarInactiveTintColor: '#34495e',
-                tabBarStyle: { 
-                  backgroundColor: '#e8e5dc',
-                  display: getTabBarVisibility(route), 
-                },
-                tabBarIcon: ({ color, size }) => {
-                  const map = { Home: 'home', Me: 'user-alt', Realtime: 'bolt' };
-                  return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
-                },
-                headerShown: route.name !== 'Home' && route.name !== 'Me',
-              })}
-            >
-              <Tab.Screen name="Home" component={HomeStackNavigator} />
-              <Tab.Screen name="Me" component={ProfileScreen} />
-            </Tab.Navigator>
-          </NavigationContainer>
-        </View>
-      </EventProvider>
+      <AuthProvider>
+        <EventProvider>
+          <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+            <NavigationContainer>
+              <AppNavigator />
+            </NavigationContainer>
+          </View>
+        </EventProvider>
+      </AuthProvider>
     </SafeAreaProvider>
+  );
+}
+
+function AppNavigator() {
+  const { isAuthed, authLoading } = useAuth();
+
+  if (authLoading) return null;
+
+  if (!isAuthed) {
+    return <LoginScreen />;
+  }
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerTitleAlign: 'center',
+        tabBarActiveTintColor: '#e55347',
+        tabBarInactiveTintColor: '#34495e',
+        tabBarStyle: { 
+          backgroundColor: '#e8e5dc',
+          display: getTabBarVisibility(route), 
+        },
+        tabBarIcon: ({ color, size }) => {
+          const map = { Home: 'home', Me: 'user-alt', Realtime: 'bolt' };
+          return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
+        },
+        headerShown: route.name !== 'Home' && route.name !== 'Me',
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeStackNavigator} />
+      <Tab.Screen name="Me" component={ProfileScreen} />
+    </Tab.Navigator>
   );
 }
