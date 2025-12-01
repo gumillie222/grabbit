@@ -51,6 +51,7 @@ export default function ProfileScreen({ navigation }) {
   // --- Friend modal state ---
   const [friendModalVisible, setFriendModalVisible] = useState(false);
   const [friendTab, setFriendTab] = useState('add'); // 'add' | 'requests'
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   const openEdit = () => {
     setDraftName(profile.name);
@@ -207,7 +208,10 @@ export default function ProfileScreen({ navigation }) {
           <TouchableOpacity style={profileStyles.iconButton} onPress={openEdit}>
             <FontAwesome5 name="edit" size={20} color={colors.accent} />
           </TouchableOpacity>
-          <TouchableOpacity style={profileStyles.iconButton}>
+          <TouchableOpacity
+            style={profileStyles.iconButton}
+            onPress={() => setSettingsVisible(true)}
+          >
             <FontAwesome5 name="cog" size={20} color={colors.accent} />
           </TouchableOpacity>
         </View>
@@ -269,6 +273,40 @@ export default function ProfileScreen({ navigation }) {
           </ScrollView>
         </View>
       </View>
+
+      {/* Settings / About modal */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={settingsVisible}
+        onRequestClose={() => setSettingsVisible(false)}
+      >
+        <View style={globalStyles.modalOverlay}>
+          <View style={profileStyles.settingsContainer}>
+            <View style={profileStyles.settingsHeader}>
+              <Text style={profileStyles.settingsTitle}>About Grabbit</Text>
+              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
+                <FontAwesome5 name="times" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={profileStyles.settingsSubtitle}>What this app does</Text>
+            <Text style={profileStyles.settingsBody}>
+              Grabbit helps small groups keep track of shared items, see who is buying what, and split costs fairly.
+            </Text>
+
+            <Text style={profileStyles.settingsSubtitle}>Quick how-to</Text>
+            <View style={profileStyles.settingsList}>
+              <Text style={profileStyles.settingsBullet}>• Create an event on Home.</Text>
+              <Text style={profileStyles.settingsBullet}>• Add friends, then add items to the list.</Text>
+              <Text style={profileStyles.settingsBullet}>• Check items when bought and enter prices.</Text>
+              <Text style={profileStyles.settingsBullet}>• Use “The Split” tab to see who owes what.</Text>
+            </View>
+
+            <Text style={profileStyles.settingsFooter}>Version 1.0 · Demo build</Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* Edit profile modal */}
       <Modal

@@ -123,6 +123,60 @@ export const profileStyles = StyleSheet.create({
     fontFamily: fonts.bold,
   },
 
+  /* Settings modal */
+  settingsContainer: {
+    width: '90%',
+    maxWidth: 420,
+    backgroundColor: '#f2efe9',
+    borderRadius: 16,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  settingsTitle: {
+    fontSize: 20,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  settingsSubtitle: {
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  settingsBody: {
+    fontSize: 15,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    lineHeight: 22,
+  },
+  settingsList: {
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  settingsBullet: {
+    fontSize: 15,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    lineHeight: 22,
+  },
+  settingsFooter: {
+    marginTop: 14,
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: '#777',
+  },
+
   /* ===================== moved localStyles starts here ===================== */
 
   /* Tabs */
