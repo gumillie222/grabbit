@@ -115,7 +115,7 @@ export default function EventDetailScreen({ route, navigation }) {
   );
 
   const [participants, setParticipants] = useState(
-    initialParticipants || (isNew && currentUser?.name ? [currentUser.name] : [])
+    initialParticipants || (isNew && currentUser?.id ? [currentUser.id] : [])
   );
 
   // Sync participants with contextEvent when it changes
@@ -124,6 +124,22 @@ export default function EventDetailScreen({ route, navigation }) {
       setParticipants(contextEvent.participants);
     }
   }, [contextEvent?.participants]);
+
+  // Helper to get user name from ID (for display)
+  const getUserNameFromId = (userId) => {
+    if (!userId) return null;
+    // Check if it's the current user
+    if (userId === currentUser?.id) return currentUser?.name || 'Me';
+    // Check friends
+    const friend = contextFriends.find(f => f.id === userId);
+    if (friend) return friend.name;
+    // Check participants - if it's already a name, return it (backward compatibility)
+    if (participants.includes(userId) && typeof userId === 'string' && userId !== userId.toLowerCase()) {
+      return userId; // Might be a name already
+    }
+    // Fallback: return the ID
+    return userId;
+  };
 
   const [participantsModalVisible, setParticipantsModalVisible] =
     useState(false);
@@ -375,9 +391,10 @@ export default function EventDetailScreen({ route, navigation }) {
     participants.forEach(p => (balances[p] = 0));
 
     // Filter bought items to only include those with valid buyers in participants
+    // Use currentUser?.id instead of name since participants contains IDs
     const bought = items.filter(item => {
       if (!item.bought || !item.price || parseFloat(item.price) <= 0) return false;
-      const buyer = item.claimedBy || currentUser?.name;
+      const buyer = item.claimedBy || currentUser?.id;
       return buyer && participants.includes(buyer);
     });
     
@@ -389,10 +406,10 @@ export default function EventDetailScreen({ route, navigation }) {
 
     bought.forEach(item => {
       const price = parseFloat(item.price);
-      const buyer = item.claimedBy || currentUser?.name;
+      const buyer = item.claimedBy || currentUser?.id;
       
       // Skip items where the buyer is not in the current participants list
-      if (!participants.includes(buyer)) {
+      if (!buyer || !participants.includes(buyer)) {
         console.log(`[Split] Skipping item "${item.name}" - buyer "${buyer}" is not in participants`);
         return;
       }
@@ -400,8 +417,8 @@ export default function EventDetailScreen({ route, navigation }) {
       // Get sharers, filtering to only include current participants
       let rawSharers = [];
       if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
-        // Filter sharedBy to only include current participants
-        rawSharers = item.sharedBy.filter(name => participants.includes(name));
+        // Filter sharedBy to only include current participants (sharedBy should contain IDs)
+        rawSharers = item.sharedBy.filter(id => participants.includes(id));
       }
       
       // If no valid sharers after filtering, default to buyer only
@@ -422,6 +439,11 @@ export default function EventDetailScreen({ route, navigation }) {
 
       // Ensure buyer and all sharers have balance entries
       if (!balances[buyer]) balances[buyer] = 0;
+      
+      // First, credit the buyer for the full amount they paid
+      balances[buyer] += price;
+      
+      // Then, debit each sharer (including the buyer if they're sharing) for their share
       sharers.forEach(person => {
         // Skip if person is not in participants (shouldn't happen after filtering, but safety check)
         if (!participants.includes(person)) {
@@ -430,9 +452,7 @@ export default function EventDetailScreen({ route, navigation }) {
         }
         
         if (!balances[person]) balances[person] = 0;
-        if (person === buyer) return;
-        balances[person] -= perPerson; // they owe
-        balances[buyer] += perPerson; // buyer receives
+        balances[person] -= perPerson; // they owe their share
       });
     });
 
@@ -442,6 +462,9 @@ export default function EventDetailScreen({ route, navigation }) {
       if (bal < -0.01) debtors.push({ person, amount: -bal });
       if (bal > 0.01) creditors.push({ person, amount: bal });
     });
+
+    console.log('[Split] Debtors:', debtors);
+    console.log('[Split] Creditors:', creditors);
 
     debtors.sort((a, b) => b.amount - a.amount);
     creditors.sort((a, b) => b.amount - a.amount);
@@ -455,11 +478,13 @@ export default function EventDetailScreen({ route, navigation }) {
       const creditor = creditors[c];
       const amount = Math.min(debtor.amount, creditor.amount);
 
-      transactions.push({
-        from: debtor.person,
-        to: creditor.person,
-        amount: amount.toFixed(2),
-      });
+      if (amount > 0.01) {
+        transactions.push({
+          from: debtor.person,
+          to: creditor.person,
+          amount: amount.toFixed(2),
+        });
+      }
 
       debtor.amount -= amount;
       creditor.amount -= amount;
@@ -468,8 +493,11 @@ export default function EventDetailScreen({ route, navigation }) {
       if (creditor.amount <= 0.01) c++;
     }
 
+    console.log('[Split] Final transactions:', transactions);
+    console.log('[Split] Final balances:', balances);
+
     return { balances, transactions, totalSpent: totalSpent.toFixed(2) };
-  }, [items, participants, currentUser?.name]);
+  }, [items, participants, currentUser?.id]);
 
   const closeAiModal = () => {
     setAiModalVisible(false);
@@ -499,7 +527,7 @@ export default function EventDetailScreen({ route, navigation }) {
     setItems(current =>
       current.map(item =>
         item.id === id
-          ? { ...item, claimedBy: item.claimedBy === currentUser?.name ? null : currentUser?.name }
+          ? { ...item, claimedBy: item.claimedBy === currentUser?.id ? null : currentUser?.id }
           : item
       )
     );
@@ -532,11 +560,11 @@ export default function EventDetailScreen({ route, navigation }) {
 
   // --- SHARING PICKERS ---
 
-  const toggleSharePersonInDropdown = name => {
+  const toggleSharePersonInDropdown = id => {
     setBuySharedBy(prev => {
-      const isSelected = prev.includes(name);
-      let next = isSelected ? prev.filter(n => n !== name) : [...prev, name];
-      if (next.length === 0) next = ['Me']; // never empty
+      const isSelected = prev.includes(id);
+      let next = isSelected ? prev.filter(n => n !== id) : [...prev, id];
+      if (next.length === 0) next = [currentUser?.id].filter(Boolean); // never empty
       return next;
     });
   };
@@ -548,7 +576,7 @@ export default function EventDetailScreen({ route, navigation }) {
       setSelectedItem(item);
       setPriceInput('');
       // Default share: everyone in participants (or just current user if empty)
-      setBuySharedBy(participants.length > 0 ? [...participants] : [currentUser?.name].filter(Boolean));
+      setBuySharedBy(participants.length > 0 ? [...participants] : [currentUser?.id].filter(Boolean));
       setShareDropdownVisible(false);
       setBuyModalVisible(true);
     } else {
@@ -605,8 +633,8 @@ export default function EventDetailScreen({ route, navigation }) {
                 ...item,
                 bought: true,
                 price: priceInput,
-                claimedBy: currentUser?.name || null,
-                sharedBy: buySharedBy.length > 0 ? buySharedBy : [currentUser?.name].filter(Boolean),
+                claimedBy: currentUser?.id || null,
+                sharedBy: buySharedBy.length > 0 ? buySharedBy : [currentUser?.id].filter(Boolean),
               }
             : item
         )
@@ -624,17 +652,17 @@ export default function EventDetailScreen({ route, navigation }) {
     const currentSharers =
       Array.isArray(item.sharedBy) && item.sharedBy.length > 0
         ? item.sharedBy
-        : [item.claimedBy || currentUser?.name].filter(Boolean);
+        : [item.claimedBy || currentUser?.id].filter(Boolean);
     setSharedByDraft(currentSharers);
     setSharedByEditItemId(item.id);
     setSharedByModalVisible(true);
   };
 
-  const toggleSharedByDraftPerson = name => {
+  const toggleSharedByDraftPerson = id => {
     setSharedByDraft(prev => {
-      const isSelected = prev.includes(name);
-      let next = isSelected ? prev.filter(n => n !== name) : [...prev, name];
-      if (next.length === 0) next = [currentUser?.name].filter(Boolean);
+      const isSelected = prev.includes(id);
+      let next = isSelected ? prev.filter(n => n !== id) : [...prev, id];
+      if (next.length === 0) next = [currentUser?.id].filter(Boolean);
       return next;
     });
   };
@@ -647,7 +675,7 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const confirmEditSharedBy = () => {
     if (sharedByEditItemId == null) return;
-    const cleaned = sharedByDraft.length ? sharedByDraft : [currentUser?.name].filter(Boolean);
+    const cleaned = sharedByDraft.length ? sharedByDraft : [currentUser?.id].filter(Boolean);
     setItems(current =>
       current.map(item =>
         item.id === sharedByEditItemId ? { ...item, sharedBy: cleaned } : item
@@ -772,14 +800,14 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const openParticipantsModal = () => {
     if (isReadOnly) return showArchivedAlert();
-    const currentFriends = participants.filter(name => name !== 'Me');
+    const currentFriends = participants.filter(id => id !== currentUser?.id);
     setTempParticipants(currentFriends);
     setParticipantsModalVisible(true);
   };
 
-  const toggleTempParticipant = name => {
+  const toggleTempParticipant = id => {
     setTempParticipants(prev =>
-      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+      prev.includes(id) ? prev.filter(n => n !== id) : [...prev, id]
     );
   };
 
@@ -789,17 +817,17 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const confirmParticipantsSelection = async () => {
-    // New participant list: current user + whatever was selected
-    const newParticipants = [currentUser?.name, ...tempParticipants].filter(Boolean);
+    // New participant list: current user + whatever was selected (all IDs)
+    const newParticipants = [currentUser?.id, ...tempParticipants].filter(Boolean);
     
     // Check if any participants are being removed
     const removedParticipants = participants.filter(
-      p => p !== currentUser?.name && !newParticipants.includes(p)
+      p => p !== currentUser?.id && !newParticipants.includes(p)
     );
     
     // If someone is being removed, show confirmation dialog
     if (removedParticipants.length > 0) {
-      const removedNames = removedParticipants.join(', ');
+      const removedNames = removedParticipants.map(id => getUserNameFromId(id) || id).join(', ');
       Alert.alert(
         'Remove Participants?',
         `Are you sure you want to remove ${removedNames} from this event? They will no longer have access to it.`,
@@ -809,7 +837,7 @@ export default function EventDetailScreen({ route, navigation }) {
             style: 'cancel',
             onPress: () => {
               // Reset temp participants to current state
-              const currentFriends = participants.filter(name => name !== currentUser?.name);
+              const currentFriends = participants.filter(id => id !== currentUser?.id);
               setTempParticipants(currentFriends);
             },
           },
@@ -827,21 +855,21 @@ export default function EventDetailScreen({ route, navigation }) {
                     const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
             
                     // Keep only sharers that are still in the event
-                    const cleanedSharedBy = currentSharers.filter(name =>
-                      newParticipants.includes(name)
+                    const cleanedSharedBy = currentSharers.filter(id =>
+                      newParticipants.includes(id)
                     );
             
                     // If claimedBy has been removed, fall back to current user
                     let cleanedClaimedBy = item.claimedBy;
                     if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
-                      cleanedClaimedBy = currentUser?.name || null;
+                      cleanedClaimedBy = currentUser?.id || null;
                     }
                     
                     // If sharedBy becomes empty after cleaning and item is bought, 
                     // default to the buyer (or current user if buyer was removed)
                     let finalSharedBy = cleanedSharedBy;
                     if (item.bought && finalSharedBy.length === 0) {
-                      finalSharedBy = [cleanedClaimedBy || currentUser?.name].filter(Boolean);
+                      finalSharedBy = [cleanedClaimedBy || currentUser?.id].filter(Boolean);
                     }
             
                     return {
@@ -854,8 +882,8 @@ export default function EventDetailScreen({ route, navigation }) {
                 
                 // Also clean the current selection used in the buy modal
                 setBuySharedBy(prev => {
-                  const filtered = prev.filter(name => newParticipants.includes(name));
-                  return filtered.length ? filtered : [currentUser?.name].filter(Boolean);
+                  const filtered = prev.filter(id => newParticipants.includes(id));
+                  return filtered.length ? filtered : [currentUser?.id].filter(Boolean);
                 });
                 
                 // Sync with backend via EventContext
@@ -873,7 +901,7 @@ export default function EventDetailScreen({ route, navigation }) {
                   [{ text: 'OK' }]
                 );
                 // Reset temp participants to current state on error
-                const currentFriends = participants.filter(name => name !== currentUser?.name);
+                const currentFriends = participants.filter(id => id !== currentUser?.id);
                 setTempParticipants(currentFriends);
               }
             },
@@ -894,21 +922,21 @@ export default function EventDetailScreen({ route, navigation }) {
           const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
   
           // Keep only sharers that are still in the event
-          const cleanedSharedBy = currentSharers.filter(name =>
-            newParticipants.includes(name)
+          const cleanedSharedBy = currentSharers.filter(id =>
+            newParticipants.includes(id)
           );
   
           // If claimedBy has been removed, fall back to current user
           let cleanedClaimedBy = item.claimedBy;
           if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
-            cleanedClaimedBy = currentUser?.name || null;
+            cleanedClaimedBy = currentUser?.id || null;
           }
           
           // If sharedBy becomes empty after cleaning and item is bought, 
           // default to the buyer (or current user if buyer was removed)
           let finalSharedBy = cleanedSharedBy;
           if (item.bought && finalSharedBy.length === 0) {
-            finalSharedBy = [cleanedClaimedBy || currentUser?.name].filter(Boolean);
+            finalSharedBy = [cleanedClaimedBy || currentUser?.id].filter(Boolean);
           }
   
           return {
@@ -922,7 +950,7 @@ export default function EventDetailScreen({ route, navigation }) {
       // Also clean the current selection used in the buy modal
       setBuySharedBy(prev => {
         const filtered = prev.filter(name => newParticipants.includes(name));
-        return filtered.length ? filtered : [currentUser?.name].filter(Boolean);
+        return filtered.length ? filtered : [currentUser?.id].filter(Boolean);
       });
       
       // Sync with backend via EventContext
@@ -955,10 +983,10 @@ export default function EventDetailScreen({ route, navigation }) {
         let rawSharers =
           Array.isArray(item.sharedBy) && item.sharedBy.length > 0
             ? item.sharedBy
-            : [item.claimedBy || currentUser?.name].filter(Boolean);
+            : [item.claimedBy || currentUser?.id].filter(Boolean);
         
-        // Filter sharers to only include current participants
-        const sharers = rawSharers.filter(name => participants.includes(name));
+        // Filter sharers to only include current participants (sharedBy should contain IDs)
+        const sharers = rawSharers.filter(id => participants.includes(id));
         
         // Skip items with no valid sharers
         if (sharers.length === 0) return;
@@ -1099,7 +1127,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 isReadOnly ? showArchivedAlert() : toggleItemClaim(item.id)
               }
             >
-              {item.claimedBy === currentUser?.name ? (
+              {item.claimedBy === currentUser?.id ? (
                 <View style={detailStyles.avatarSmallSelected}>
                   <Text style={detailStyles.avatarTextSmall}>
                     {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
@@ -1128,7 +1156,7 @@ export default function EventDetailScreen({ route, navigation }) {
         )}
 
         {/* buyer badge on recent list */}
-        {!isActiveList && item.claimedBy === currentUser?.name && (
+        {!isActiveList && item.claimedBy === currentUser?.id && (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>
               {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
@@ -1190,14 +1218,10 @@ export default function EventDetailScreen({ route, navigation }) {
           let rawSharers =
             Array.isArray(item.sharedBy) && item.sharedBy.length > 0
               ? item.sharedBy
-              : [item.claimedBy ?? 'Me'];
+              : [item.claimedBy || currentUser?.id].filter(Boolean);
           
-          // Filter sharers to only include current participants
-          const sharers = rawSharers.filter(name => {
-            // Normalize name: if it's the current user's name, treat as "Me"
-            const normalizedName = name === currentUser?.name ? 'Me' : name;
-            return participants.includes(normalizedName);
-          });
+          // Filter sharers to only include current participants (sharedBy should contain IDs)
+          const sharers = rawSharers.filter(id => participants.includes(id));
 
           return (
             <View key={item.id} style={{ marginBottom: 12 }}>
@@ -1227,9 +1251,10 @@ export default function EventDetailScreen({ route, navigation }) {
                   shared by
                 </Text>
 
-                {sharers.map((name, index) => {
-                  const isCurrentUser = name === currentUser?.name;
-                  const uniqueKey = `${item.id}-${name}-${index}`;
+                {sharers.map((id, index) => {
+                  const name = getUserNameFromId(id);
+                  const isCurrentUser = id === currentUser?.id;
+                  const uniqueKey = `${item.id}-${id}-${index}`;
                   return (
                     <View
                       key={uniqueKey}
@@ -1268,11 +1293,23 @@ export default function EventDetailScreen({ route, navigation }) {
     const getInitial = name => {
       return name.charAt(0).toUpperCase();
     };
-    const allBalancesSettled = Object.values(splitData.balances).every(
-      bal => Math.abs(bal) < 0.01
-    );
-
-    if (splitData.transactions.length === 0 && allBalancesSettled) {
+    
+    // Debug: log balances and transactions
+    console.log('[SplitTab] Balances:', splitData.balances);
+    console.log('[SplitTab] Transactions:', splitData.transactions);
+    console.log('[SplitTab] Total spent:', splitData.totalSpent);
+    
+    // If there are transactions, always show them
+    if (splitData.transactions.length > 0) {
+      // Show transactions below
+    } else {
+      // No transactions - check if we should show "all settled"
+      const allBalancesSettled = Object.values(splitData.balances).every(
+        bal => Math.abs(bal) < 0.01
+      );
+      const hasNoExpenses = parseFloat(splitData.totalSpent) === 0;
+      
+      if (allBalancesSettled || hasNoExpenses) {
       return (
         <View style={detailStyles.splitCenterContainer}>
           <Text
@@ -1309,8 +1346,10 @@ export default function EventDetailScreen({ route, navigation }) {
           </View>
         </View>
       );
+      }
     }
 
+    // Show transactions (or empty state if no transactions but balances aren't settled)
     return (
       <View style={detailStyles.splitCenterContainer}>
         <Text
@@ -1321,25 +1360,29 @@ export default function EventDetailScreen({ route, navigation }) {
         >
           Total Spent: ${splitData.totalSpent}
         </Text>
-        {splitData.transactions.map((t, index) => (
-          <View key={index} style={detailStyles.splitRow}>
-            <View style={detailStyles.avatarMedium}>
-              <Text style={detailStyles.avatarTextMedium}>
-                {getInitial(t.from)}
-              </Text>
+        {splitData.transactions.map((t, index) => {
+          const fromName = getUserNameFromId(t.from) || t.from;
+          const toName = getUserNameFromId(t.to) || t.to;
+          return (
+            <View key={index} style={detailStyles.splitRow}>
+              <View style={detailStyles.avatarMedium}>
+                <Text style={detailStyles.avatarTextMedium}>
+                  {getInitial(fromName)}
+                </Text>
+              </View>
+              <View style={detailStyles.arrowContainer}>
+                <Text style={detailStyles.amountText}>${t.amount}</Text>
+                <View style={detailStyles.arrowLine} />
+                <View style={detailStyles.arrowHead} />
+              </View>
+              <View style={detailStyles.avatarMedium}>
+                <Text style={detailStyles.avatarTextMedium}>
+                  {getInitial(toName)}
+                </Text>
+              </View>
             </View>
-            <View style={detailStyles.arrowContainer}>
-              <Text style={detailStyles.amountText}>${t.amount}</Text>
-              <View style={detailStyles.arrowLine} />
-              <View style={detailStyles.arrowHead} />
-            </View>
-            <View style={detailStyles.avatarMedium}>
-              <Text style={detailStyles.avatarTextMedium}>
-                {getInitial(t.to)}
-              </Text>
-            </View>
-          </View>
-        ))}
+          );
+        })}
         <View style={[detailStyles.splitButtonRow, { marginTop: 30 }]}>
           <TouchableOpacity
             style={detailStyles.detailedButton}
@@ -1369,13 +1412,13 @@ export default function EventDetailScreen({ route, navigation }) {
       return [];
     }
     
-    // Filter friends to only include those who are current participants
+    // Filter friends to only include those who are current participants (by ID)
     // This ensures the picker only shows relevant friends
-    const participantNames = participants.filter(p => p !== 'Me');
+    const participantIds = participants.filter(p => p !== currentUser?.id);
     return contextFriends.filter(friend => 
-      participantNames.includes(friend.name)
+      participantIds.includes(friend.id)
     );
-  }, [contextFriends, participants]);
+  }, [contextFriends, participants, currentUser?.id]);
 
   // ---- RENDER ----
   return (
@@ -1410,14 +1453,15 @@ export default function EventDetailScreen({ route, navigation }) {
             color={colors.text}
             style={{ marginRight: 8 }}
           />
-          {participants.map((participant, index) => {
+          {participants.map((participantId, index) => {
+            const participantName = getUserNameFromId(participantId) || participantId;
             return (
               <View
                 key={index}
                 style={detailStyles.avatarSmall }
               >
                 <Text style={detailStyles.avatarTextSmall}>
-                  {participant?.charAt(0).toUpperCase() || '?'}
+                  {participantName?.charAt(0).toUpperCase() || '?'}
                 </Text>
               </View>
             );
@@ -1499,10 +1543,11 @@ export default function EventDetailScreen({ route, navigation }) {
 
             <View>
               <View style={detailStyles.sharedByRow}>
-                {buySharedBy.map(name => {
+                {buySharedBy.map(id => {
+                  const name = getUserNameFromId(id);
                   return (
                     <View
-                      key={name}
+                      key={id}
                       style={[detailStyles.avatarSmall, { marginRight: 6 }]
                       }
                     >
@@ -1528,6 +1573,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 <View style={detailStyles.shareDropdown}>
                   {participants.map(p => {
                     const isSelected = buySharedBy.includes(p);
+                    const displayName = p === currentUser?.id ? 'Me' : getUserNameFromId(p) || p;
                     return (
                       <TouchableOpacity
                         key={p}
@@ -1554,7 +1600,7 @@ export default function EventDetailScreen({ route, navigation }) {
                             isSelected && detailStyles.friendNameSelected,
                           ]}
                         >
-                          {p}
+                          {displayName}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1728,16 +1774,16 @@ export default function EventDetailScreen({ route, navigation }) {
                   contentContainerStyle={{ paddingBottom: 10 }}
                 >
                   {effectiveFriends.map(friend => {
-                    const name = friend.name;
-                    const isSelected = tempParticipants.includes(name);
+                    const friendId = friend.id;
+                    const isSelected = tempParticipants.includes(friendId);
                     return (
                       <TouchableOpacity
-                        key={friend.id ?? name}
+                        key={friendId}
                         style={[
                           detailStyles.friendItem,
                           isSelected && detailStyles.friendItemSelected,
                         ]}
-                        onPress={() => toggleTempParticipant(name)}
+                        onPress={() => toggleTempParticipant(friendId)}
                       >
                         <View
                           style={[
@@ -1759,7 +1805,7 @@ export default function EventDetailScreen({ route, navigation }) {
                             isSelected && detailStyles.friendNameSelected,
                           ]}
                         >
-                          {name}
+                          {friend.name}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1807,6 +1853,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 >
                   {participants.map(p => {
                     const isSelected = sharedByDraft.includes(p);
+                    const displayName = p === currentUser?.id ? 'Me' : getUserNameFromId(p) || p;
                     return (
                       <TouchableOpacity
                         key={p}
@@ -1836,7 +1883,7 @@ export default function EventDetailScreen({ route, navigation }) {
                             isSelected && detailStyles.friendNameSelected,
                           ]}
                         >
-                          {p}
+                          {displayName}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1884,22 +1931,23 @@ export default function EventDetailScreen({ route, navigation }) {
                   style={detailStyles.friendsListContainer}
                   contentContainerStyle={{ paddingBottom: 10 }}
                 >
-                  {participants.map(person => {
+                  {participants.map(personId => {
                     const spending = getSpendingPerPerson();
-                    const amount = spending[person] || 0;
+                    const amount = spending[personId] || 0;
+                    const personName = getUserNameFromId(personId) || personId;
                     
                     return (
                       <View
-                        key={person}
+                        key={personId}
                         style={detailStyles.detailedItemRow}
                       >
                         <View style={detailStyles.avatarMedium}>
                           <Text style={detailStyles.avatarTextMedium}>
-                            {person?.charAt(0).toUpperCase() || '?'}
+                            {personName?.charAt(0).toUpperCase() || '?'}
                           </Text>
                         </View>
                         <Text style={detailStyles.detailedPersonName}>
-                          {person}
+                          {personName}
                         </Text>
                         <Text style={detailStyles.detailedAmount}>
                           ${amount.toFixed(2)}

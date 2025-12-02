@@ -254,15 +254,24 @@ export const EventProvider = ({ children }) => {
 
   const addEvent = async (newEvent) => {
     // Ensure current user is in participants if not already
+    // Convert participant names to IDs for backend
     const participants = newEvent.participants ?? [];
-    const participantsWithUser = participants.includes(currentUser?.name) 
-      ? participants 
-      : [currentUser?.name, ...participants].filter(Boolean);
+    const participantIds = participants.map(p => {
+      // If it's already an ID (lowercase), use it
+      if (p === p.toLowerCase()) return p;
+      // Otherwise, find the friend by name and get their ID
+      const friend = friends.find(f => f.name === p);
+      return friend ? friend.id : p;
+    });
+    
+    const participantsWithUser = participantIds.includes(currentUser?.id) 
+      ? participantIds 
+      : [currentUser?.id, ...participantIds].filter(Boolean);
     
     const eventToAdd = {
       ...newEvent,
       items: newEvent.items ?? [],
-      participants: participantsWithUser,
+      participants: participantsWithUser, // Now contains IDs
       isNew: true,
       archived: false,
     };
@@ -272,19 +281,15 @@ export const EventProvider = ({ children }) => {
     // Sync with backend
     if (currentUser?.id) {
       try {
-        // Get friend IDs from participants
-        const participantFriends = friends.filter(f => 
-          eventToAdd.participants.includes(f.name)
-        );
-        const sharedWith = [currentUser.id, ...participantFriends.map(f => f.id)].filter(Boolean);
+        // sharedWith should be the same as participants (both are IDs now)
+        const sharedWith = participantsWithUser;
         
-        console.log(`[EventContext] Creating event with participants: ${eventToAdd.participants.join(', ')}, sharedWith: ${sharedWith.join(', ')}`);
-        console.log(`[EventContext] Found ${participantFriends.length} matching friends:`, participantFriends.map(f => `${f.name} (${f.id})`));
+        console.log(`[EventContext] Creating event with participants (IDs): ${participantsWithUser.join(', ')}, sharedWith: ${sharedWith.join(', ')}`);
         
         await api.saveEvent(currentUser.id, newEvent.id, {
           title: eventToAdd.title,
           items: eventToAdd.items,
-          participants: eventToAdd.participants,
+          participants: participantsWithUser, // Send IDs to backend
           sharedWith,
         });
         

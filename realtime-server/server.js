@@ -109,32 +109,58 @@ io.on("connection", (socket) => {
       
       console.log(`[Socket] Existing event sharedWith: ${sharedWith.join(', ')}, ownerId: ${ownerId}`);
       
-      // If participants are provided, use them directly as IDs (they should already be IDs)
+      // If participants are provided, normalize them to lowercase IDs and filter duplicates
       if (eventData.participants && Array.isArray(eventData.participants) && eventData.participants.length > 0) {
-        // Participants are already IDs, use them directly
-        sharedWith = [...eventData.participants];
-        // Ensure owner is included
-        if (!sharedWith.includes(ownerId)) {
-          sharedWith.unshift(ownerId);
+        // Normalize participants to lowercase IDs (handle both names and IDs)
+        const normalizedParticipants = [];
+        for (const participant of eventData.participants) {
+          if (!participant) continue;
+          // Convert to lowercase ID
+          const normalizedId = participant.toLowerCase();
+          // Check if it's a valid user ID
+          if (users.has(normalizedId) && !normalizedParticipants.includes(normalizedId)) {
+            normalizedParticipants.push(normalizedId);
+          }
+        }
+        
+        // Build sharedWith from normalized participants, filtering duplicates
+        sharedWith = [ownerId]; // Start with owner
+        for (const participantId of normalizedParticipants) {
+          if (participantId && !sharedWith.includes(participantId)) {
+            sharedWith.push(participantId);
+          }
         }
         console.log(`[Socket] Updated sharedWith from participants: ${oldSharedWith.join(', ')} -> ${sharedWith.join(', ')}`);
+        
+        // Use normalized participants
+        participants = normalizedParticipants;
       } else {
         // Ensure owner is always in sharedWith
         if (!sharedWith.includes(ownerId)) {
           sharedWith.unshift(ownerId);
           console.log(`[Socket] Added owner ${ownerId} to sharedWith`);
         }
+        // Keep existing participants if no new ones provided
+        participants = existingEvent.participants || [];
       }
       
       const wasSharedWithUpdated = JSON.stringify(oldSharedWith.sort()) !== JSON.stringify(sharedWith.sort());
       
-      // Items already have user IDs in claimedBy and sharedBy fields
+      // Ensure participants and sharedWith are normalized before storing
+      const normalizedParticipants = [...new Set(participants.map(p => p.toLowerCase()))];
+      const normalizedSharedWith = [...new Set(sharedWith.map(s => s.toLowerCase()))];
+      
       events.set(eventId, {
         ...existingEvent,
         ...eventData,
-        sharedWith: sharedWith,
+        participants: normalizedParticipants,
+        sharedWith: normalizedSharedWith,
         updatedAt: Date.now(),
       });
+      
+      // Update local variables to use normalized values
+      participants = normalizedParticipants;
+      sharedWith = normalizedSharedWith;
       
       // If sharedWith was updated, notify both newly added and removed users
       if (wasSharedWithUpdated) {
@@ -162,17 +188,24 @@ io.on("connection", (socket) => {
       
       // Notify all users who have access to this event
       console.log(`[Socket] Preparing to notify users in sharedWith: ${sharedWith.join(', ')}, sender: ${actualUserId}`);
+      const eventToSend = events.get(eventId);
+      // Ensure participants and sharedWith are normalized (lowercase IDs only, no duplicates)
+      const normalizedEventToSend = {
+        ...eventToSend,
+        participants: [...new Set(participants.map(p => p.toLowerCase()))],
+        sharedWith: [...new Set(sharedWith.map(s => s.toLowerCase()))],
+      };
+      
       sharedWith.forEach(targetUserId => {
         if (targetUserId !== actualUserId) { // Don't send back to sender
           const targetUser = users.get(targetUserId);
           console.log(`[Socket] Checking user ${targetUserId}:`, targetUser ? `found (socketId=${targetUser.socketId}, online=${targetUser.online})` : 'not found');
           if (targetUser && targetUser.socketId) {
-            const eventToSend = events.get(eventId);
             // Items already have user IDs - send as-is
-            console.log(`[Socket] Sending event:update to user ${targetUserId} (socketId=${targetUser.socketId}), items count: ${eventToSend.items?.length || 0}`);
+            console.log(`[Socket] Sending event:update to user ${targetUserId} (socketId=${targetUser.socketId}), items count: ${normalizedEventToSend.items?.length || 0}`);
             io.to(targetUser.socketId).emit("event:update", {
               eventId,
-              eventData: eventToSend,
+              eventData: normalizedEventToSend,
               fromUserId: actualUserId,
               serverTs: Date.now(),
             });
@@ -688,11 +721,24 @@ app.post("/api/events", (req, res) => {
   let sharedWith = [userId]; // Start with owner
   
   if (eventData.participants && Array.isArray(eventData.participants)) {
-    // Participants are already IDs, use them directly
-    sharedWith = [...eventData.participants];
-    // Ensure owner is included
-    if (!sharedWith.includes(userId)) {
-      sharedWith.unshift(userId);
+    // Normalize participants to lowercase IDs (handle both names and IDs)
+    const normalizedParticipants = [];
+    for (const participant of eventData.participants) {
+      if (!participant) continue;
+      // Convert to lowercase ID
+      const normalizedId = participant.toLowerCase();
+      // Check if it's a valid user ID
+      if (users.has(normalizedId) && !normalizedParticipants.includes(normalizedId)) {
+        normalizedParticipants.push(normalizedId);
+      }
+    }
+    
+    // Build sharedWith from normalized participants, filtering duplicates
+    sharedWith = [userId]; // Start with owner
+    for (const participantId of normalizedParticipants) {
+      if (participantId && !sharedWith.includes(participantId)) {
+        sharedWith.push(participantId);
+      }
     }
     
     // Log which accounts are involved
@@ -701,12 +747,26 @@ app.post("/api/events", (req, res) => {
       return user ? `${user.name} (${uid})` : uid;
     });
     console.log(`[API] Event involves ${sharedWith.length} account(s): ${involvedUsers.join(', ')}`);
+    
+    // Use normalized participants
+    participants = normalizedParticipants;
   } else {
     // If no participants provided, use existing sharedWith or provided sharedWith
     sharedWith = eventData.sharedWith || existingEvent?.sharedWith || [userId];
+    // Ensure no duplicates in existing array
+    const seen = new Set();
+    sharedWith = sharedWith.filter(id => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    // Ensure owner is included
+    if (!sharedWith.includes(userId)) {
+      sharedWith.unshift(userId);
+    }
   }
   
-  // Validate: ensure owner is always in sharedWith
+  // Validate: ensure owner is always in sharedWith (should already be there, but double-check)
   if (!sharedWith.includes(userId)) {
     sharedWith.unshift(userId); // Add owner at the beginning
   }
@@ -715,24 +775,54 @@ app.post("/api/events", (req, res) => {
   
   // Items already have user IDs in claimedBy and sharedBy fields
   const ownerId = existingEvent?.ownerId || userId;
+  
+  // Participants are already normalized above if eventData.participants was provided
+  // Otherwise, use existing participants or empty array
+  if (!participants) {
+    participants = existingEvent?.participants || [];
+  }
+  
+  // Normalize participants and sharedWith before storing (lowercase, no duplicates)
+  const normalizedParticipants = [...new Set((participants || []).map(p => p.toLowerCase()))];
+  const normalizedSharedWith = [...new Set((sharedWith || []).map(s => s.toLowerCase()))];
+  
   const event = {
     id: eventIdToUse,
     ...eventData,
+    participants: normalizedParticipants,
     ownerId: ownerId,
-    sharedWith: sharedWith,
+    sharedWith: normalizedSharedWith,
     createdAt: existingEvent?.createdAt || Date.now(),
     updatedAt: Date.now(),
   };
   
   events.set(eventIdToUse, event);
   
+  // Update local variables to use normalized values for notifications
+  participants = normalizedParticipants;
+  sharedWith = normalizedSharedWith;
+  
   // Notify all users who have access to this event
   const isNewEvent = !existingEvent;
   const wasSharedWithUpdated = existingEvent && 
     JSON.stringify((existingEvent.sharedWith || []).sort()) !== JSON.stringify(sharedWith.sort());
   
+  // If this is a new event, notify all participants (except the creator)
+  if (isNewEvent) {
+    sharedWith.forEach(targetUserId => {
+      if (targetUserId !== userId) { // Don't notify the creator
+        const targetUser = users.get(targetUserId);
+        if (targetUser && targetUser.socketId) {
+          io.to(targetUser.socketId).emit("events:reload");
+          console.log(`[API] Sent events:reload to user ${targetUserId} for new event ${eventIdToUse}`);
+        } else {
+          console.log(`[API] User ${targetUserId} not found or not online, will see event on next reload`);
+        }
+      }
+    });
+  }
   // If sharedWith was updated, notify both newly added and removed users
-  if (wasSharedWithUpdated) {
+  else if (wasSharedWithUpdated) {
     const oldSharedWith = existingEvent.sharedWith || [];
     const newlyAddedUsers = sharedWith.filter(uid => !oldSharedWith.includes(uid));
     const removedUsers = oldSharedWith.filter(uid => !sharedWith.includes(uid));
@@ -756,6 +846,13 @@ app.post("/api/events", (req, res) => {
     });
   }
   
+  // Normalize participants and sharedWith before sending
+  const normalizedEvent = {
+    ...event,
+    participants: [...new Set((participants || []).map(p => p.toLowerCase()))],
+    sharedWith: [...new Set((sharedWith || []).map(s => s.toLowerCase()))],
+  };
+  
   sharedWith.forEach(targetUserId => {
     if (targetUserId !== userId) {
       const targetUser = users.get(targetUserId);
@@ -765,11 +862,11 @@ app.post("/api/events", (req, res) => {
           io.to(targetUser.socketId).emit("events:reload");
           console.log(`[API] Sent events:reload to user ${targetUserId} for event ${eventIdToUse}`);
         } else {
-          // For regular updates, send event:update
+          // For regular updates, send event:update with normalized data
           // Items already have user IDs - send as-is
           io.to(targetUser.socketId).emit("event:update", {
             eventId: eventIdToUse,
-            eventData: event,
+            eventData: normalizedEvent,
             fromUserId: userId,
             serverTs: Date.now(),
           });
