@@ -50,12 +50,14 @@ export default function LoginScreen() {
     try {
       if (account === 1) {
         await login({
+          id: 'alice', // Use consistent ID for Alice
           name: 'Alice',
           email: 'alice@example.com',
           phone: '555-111-2222',
         });
       } else {
         await login({
+          id: 'bob', // Use consistent ID for Bob
           name: 'Bob',
           email: 'bob@example.com',
           phone: '555-333-4444',

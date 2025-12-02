@@ -364,6 +364,15 @@ const findUserIdsByEmail = () => {
 const updateEventSharedWith = () => {
   const { aliceId, bobId } = findUserIdsByEmail();
   
+  // Also check if 'alice' and 'bob' IDs exist directly (as fallback)
+  const directAliceId = users.has('alice') ? 'alice' : aliceId;
+  const directBobId = users.has('bob') ? 'bob' : bobId;
+  
+  const finalAliceId = directAliceId || aliceId;
+  const finalBobId = directBobId || bobId;
+  
+  console.log(`[API] updateEventSharedWith: aliceId=${finalAliceId}, bobId=${finalBobId}`);
+  
   // Update existing events to include available user IDs
   for (const [eventId, event] of events.entries()) {
     if (eventId === FRIENDSGIVING_EVENT_ID || eventId === ROOMMATES_EVENT_ID) {
@@ -371,15 +380,15 @@ const updateEventSharedWith = () => {
       let updated = false;
       const newlyAddedUsers = [];
       
-      if (aliceId && !sharedWith.includes(aliceId)) {
-        sharedWith.push(aliceId);
+      if (finalAliceId && !sharedWith.includes(finalAliceId)) {
+        sharedWith.push(finalAliceId);
         updated = true;
-        newlyAddedUsers.push(aliceId);
+        newlyAddedUsers.push(finalAliceId);
       }
-      if (bobId && !sharedWith.includes(bobId)) {
-        sharedWith.push(bobId);
+      if (finalBobId && !sharedWith.includes(finalBobId)) {
+        sharedWith.push(finalBobId);
         updated = true;
-        newlyAddedUsers.push(bobId);
+        newlyAddedUsers.push(finalBobId);
       }
       
       if (updated) {
@@ -395,6 +404,8 @@ const updateEventSharedWith = () => {
             console.log(`[API] Notified user ${userId} to reload events after being added to ${eventId}`);
           }
         });
+      } else {
+        console.log(`[API] Event ${eventId} sharedWith already includes both users: ${sharedWith.join(', ')}`);
       }
     }
   }
@@ -402,31 +413,44 @@ const updateEventSharedWith = () => {
 
 // Helper to create default events (Friendsgiving and Roommates 602)
 const ensureDefaultEvents = () => {
-  // Find Alice and Bob
+  // Find Alice and Bob by email
   const { aliceId, bobId } = findUserIdsByEmail();
   
-  console.log(`[API] ensureDefaultEvents: checking ${users.size} users (aliceId=${aliceId}, bobId=${bobId})`);
+  // Also check if 'alice' and 'bob' IDs exist directly (as fallback)
+  const directAliceId = users.has('alice') ? 'alice' : aliceId;
+  const directBobId = users.has('bob') ? 'bob' : bobId;
+  
+  const finalAliceId = directAliceId || aliceId;
+  const finalBobId = directBobId || bobId;
+  
+  console.log(`[API] ensureDefaultEvents: checking ${users.size} users (aliceId=${finalAliceId}, bobId=${finalBobId})`);
   
   // If we don't have both users yet, we can still create events with placeholder IDs
   // They'll be updated when the second user comes online
-  if (!aliceId && !bobId) {
+  if (!finalAliceId && !finalBobId) {
     console.log(`[API] Cannot create default events: need at least Alice or Bob`);
     return false;
   }
   
   // Use available user IDs
-  const ownerId = aliceId || bobId;
-  const alice = aliceId ? users.get(aliceId) : null;
-  const bob = bobId ? users.get(bobId) : null;
+  const ownerId = finalAliceId || finalBobId;
+  const alice = finalAliceId ? users.get(finalAliceId) : null;
+  const bob = finalBobId ? users.get(finalBobId) : null;
   
-  // Build sharedWith array with available users
-  const sharedWith = [ownerId];
-  if (aliceId && bobId && aliceId !== ownerId) {
-    sharedWith.push(aliceId);
+  // Build sharedWith array - always include both Alice and Bob if they exist
+  const sharedWith = [];
+  if (finalAliceId) {
+    sharedWith.push(finalAliceId);
   }
-  if (aliceId && bobId && bobId !== ownerId) {
-    sharedWith.push(bobId);
+  if (finalBobId && !sharedWith.includes(finalBobId)) {
+    sharedWith.push(finalBobId);
   }
+  // If no users found yet, at least include the owner
+  if (sharedWith.length === 0 && ownerId) {
+    sharedWith.push(ownerId);
+  }
+  
+  console.log(`[API] ensureDefaultEvents: sharedWith will be [${sharedWith.join(', ')}]`);
   
   let eventsCreated = false;
   
@@ -451,9 +475,6 @@ const ensureDefaultEvents = () => {
     events.set(FRIENDSGIVING_EVENT_ID, friendsgivingEvent);
     console.log(`[API] Created default Friendsgiving event (shared with ${sharedWith.join(', ')})`);
     eventsCreated = true;
-  } else {
-    // Event exists, update sharedWith to ensure both users are included
-    updateEventSharedWith();
   }
   
   // Create Roommates 602 event if it doesn't exist
@@ -477,14 +498,14 @@ const ensureDefaultEvents = () => {
     events.set(ROOMMATES_EVENT_ID, roommatesEvent);
     console.log(`[API] Created default Unit 602 Roommates event (shared with ${sharedWith.join(', ')})`);
     eventsCreated = true;
-  } else {
-    // Event exists, update sharedWith to ensure both users are included
-    updateEventSharedWith();
   }
   
+  // Always update sharedWith for existing events to ensure both users are included
+  updateEventSharedWith();
+  
   // If events were created or updated, notify online users to reload
-  const aliceUser = aliceId ? users.get(aliceId) : null;
-  const bobUser = bobId ? users.get(bobId) : null;
+  const aliceUser = finalAliceId ? users.get(finalAliceId) : null;
+  const bobUser = finalBobId ? users.get(finalBobId) : null;
   
   if (eventsCreated) {
     // Notify any online users
