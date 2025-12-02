@@ -317,6 +317,16 @@ export const EventProvider = ({ children }) => {
       try {
         const event = events.find(e => e.id === eventId) || archivedEvents.find(e => e.id === eventId);
         if (event) {
+          // Log items with sharedBy for debugging
+          const itemsWithSharedBy = updatedItems.filter(item => Array.isArray(item.sharedBy) && item.sharedBy.length > 0);
+          if (itemsWithSharedBy.length > 0) {
+            console.log(`[EventContext] Updating items with sharedBy:`, itemsWithSharedBy.map(item => ({
+              id: item.id,
+              name: item.name,
+              sharedBy: item.sharedBy
+            })));
+          }
+          
           await api.saveEvent(currentUser.id, eventId, {
             ...event,
             items: updatedItems,
@@ -324,16 +334,25 @@ export const EventProvider = ({ children }) => {
           });
           
           // Send real-time update via socket
+          // Don't send sharedWith - let server compute it from participants
           if (socketRef.current) {
+            const { sharedWith, ...eventWithoutSharedWith } = event;
             socketRef.current.emit('event:update', {
               eventId,
               eventData: {
-                ...event,
+                ...eventWithoutSharedWith,
                 items: updatedItems,
                 participants: event.participants || [],
               },
             });
-            console.log(`[EventContext] Sent event:update for event ${eventId} with ${updatedItems.length} items`);
+            console.log(`[EventContext] Sent event:update for event ${eventId} with ${updatedItems.length} items, participants: ${(event.participants || []).join(', ')}`);
+            if (itemsWithSharedBy.length > 0) {
+              console.log(`[EventContext] Socket update includes items with sharedBy:`, itemsWithSharedBy.map(item => ({
+                id: item.id,
+                name: item.name,
+                sharedBy: item.sharedBy
+              })));
+            }
           }
         }
       } catch (err) {

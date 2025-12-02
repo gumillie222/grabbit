@@ -47,17 +47,8 @@ export function useRealtime(room, serverUrl, userId = null) {
     });
 
     // Friend-related events
-    s.on('friend:request', (payload) => {
-      console.log('[Realtime] Friend request received', payload);
-      // This will be handled by ProfileScreen
-    });
-
     s.on('friend:accepted', (payload) => {
       console.log('[Realtime] Friend request accepted', payload);
-    });
-
-    s.on('friend:declined', (payload) => {
-      console.log('[Realtime] Friend request declined', payload);
     });
 
     s.on('friend:presence', (payload) => {
@@ -76,9 +67,7 @@ export function useRealtime(room, serverUrl, userId = null) {
       clearInterval(id);
       s.off('pong', onPong);
       s.off('event:update');
-      s.off('friend:request');
       s.off('friend:accepted');
-      s.off('friend:declined');
       s.off('friend:presence');
       s.disconnect();
     };

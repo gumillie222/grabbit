@@ -29,10 +29,9 @@ app.use((req, res, next) => {
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// --- In-memory storage for users, friends, friend requests, and events ---
+// --- In-memory storage for users, friends, and events ---
 // In production, use a database (MongoDB, PostgreSQL, etc.)
 const users = new Map(); // userId -> { id, name, email, phone, socketId, online }
-const friendRequests = new Map(); // requestId -> { id, fromUserId, toUserId, status: 'pending'|'accepted'|'declined', createdAt }
 const friendships = new Map(); // `${userId1}_${userId2}` -> { userId1, userId2, createdAt }
 const events = new Map(); // eventId -> { id, title, items, participants, ownerId, sharedWith, createdAt, updatedAt }
 const FRIENDSGIVING_EVENT_ID = 'friendsgiving_default';
@@ -53,7 +52,7 @@ io.on("connection", (socket) => {
   
   console.log(`[Socket] New connection: userId=${userId}, room=${room}, socketId=${socket.id}`);
 
-  // Register user if userId provided
+  // Only allow alice and bob for demo
   if (userId) {
     const existingUser = users.get(userId);
     if (existingUser) {
@@ -61,22 +60,12 @@ io.on("connection", (socket) => {
       existingUser.online = true;
       existingUser.lastSeen = Date.now();
     } else {
-      // New user - should have been registered via /api/users/register
-      users.set(userId, {
-        id: userId,
-        socketId: socket.id,
-        online: true,
-        lastSeen: Date.now(),
-      });
+      // Only alice and bob are allowed for this demo
+      console.log(`[Socket] Rejected connection: userId=${userId} is not alice or bob`);
     }
     
-    // Try to auto-friend Alice and Bob when they connect
     autoFriendAliceAndBob(userId);
-    
-    // Ensure default events exist
     ensureDefaultEvents();
-    
-    // Notify friends that user is online
     notifyFriendsPresence(userId, true);
   }
 
@@ -105,41 +94,44 @@ io.on("connection", (socket) => {
     const userInfo = getUserBySocketId(socket.id);
     const actualUserId = userInfo?.userId || currentUserId;
     
-    console.log(`[Socket] event:update from userId=${actualUserId} (socketId=${socket.id})`);
+    console.log(`[Socket] event:update from userId=${actualUserId} (socketId=${socket.id}) for event ${eventId}`);
+    console.log(`[Socket] eventData keys:`, Object.keys(eventData || {}));
+    console.log(`[Socket] eventData.items count:`, eventData?.items?.length || 0);
     
     // Update event in storage
     const existingEvent = events.get(eventId);
     if (existingEvent) {
       const ownerId = existingEvent.ownerId || actualUserId;
       
-      // If participants are being updated, resolve them to user IDs and update sharedWith
+      // Participants are already user IDs - use them directly for sharedWith
       let sharedWith = existingEvent.sharedWith || [ownerId];
       const oldSharedWith = [...sharedWith];
       
-      if (eventData.participants) {
-        // Use resolved IDs as the source of truth (same logic as POST endpoint)
-        const resolvedIds = resolveParticipantNamesToUserIds(eventData.participants, ownerId);
-        sharedWith = resolvedIds;
-        console.log(`[Socket] Resolved participants to user IDs: ${eventData.participants} -> ${resolvedIds.join(', ')}`);
-        console.log(`[Socket] Updated sharedWith: ${oldSharedWith.join(', ')} -> ${sharedWith.join(', ')}`);
-      }
+      console.log(`[Socket] Existing event sharedWith: ${sharedWith.join(', ')}, ownerId: ${ownerId}`);
       
-      // Ensure owner is always in sharedWith
-      if (!sharedWith.includes(ownerId)) {
-        sharedWith.unshift(ownerId);
+      // If participants are provided, use them directly as IDs (they should already be IDs)
+      if (eventData.participants && Array.isArray(eventData.participants) && eventData.participants.length > 0) {
+        // Participants are already IDs, use them directly
+        sharedWith = [...eventData.participants];
+        // Ensure owner is included
+        if (!sharedWith.includes(ownerId)) {
+          sharedWith.unshift(ownerId);
+        }
+        console.log(`[Socket] Updated sharedWith from participants: ${oldSharedWith.join(', ')} -> ${sharedWith.join(', ')}`);
+      } else {
+        // Ensure owner is always in sharedWith
+        if (!sharedWith.includes(ownerId)) {
+          sharedWith.unshift(ownerId);
+          console.log(`[Socket] Added owner ${ownerId} to sharedWith`);
+        }
       }
       
       const wasSharedWithUpdated = JSON.stringify(oldSharedWith.sort()) !== JSON.stringify(sharedWith.sort());
       
-      // Convert item names to user IDs before storing
-      const itemsWithUserIds = eventData.items 
-        ? convertItemNamesToUserIds(eventData.items, ownerId)
-        : existingEvent.items;
-      
+      // Items already have user IDs in claimedBy and sharedBy fields
       events.set(eventId, {
         ...existingEvent,
         ...eventData,
-        items: itemsWithUserIds, // Use converted items with user IDs
         sharedWith: sharedWith,
         updatedAt: Date.now(),
       });
@@ -169,19 +161,18 @@ io.on("connection", (socket) => {
       }
       
       // Notify all users who have access to this event
+      console.log(`[Socket] Preparing to notify users in sharedWith: ${sharedWith.join(', ')}, sender: ${actualUserId}`);
       sharedWith.forEach(targetUserId => {
         if (targetUserId !== actualUserId) { // Don't send back to sender
           const targetUser = users.get(targetUserId);
+          console.log(`[Socket] Checking user ${targetUserId}:`, targetUser ? `found (socketId=${targetUser.socketId}, online=${targetUser.online})` : 'not found');
           if (targetUser && targetUser.socketId) {
             const eventToSend = events.get(eventId);
-            // Convert item user IDs to names for the receiving user
-            const eventDataForUser = {
-              ...eventToSend,
-              items: convertItemUserIdsToNames(eventToSend.items || [], targetUserId),
-            };
+            // Items already have user IDs - send as-is
+            console.log(`[Socket] Sending event:update to user ${targetUserId} (socketId=${targetUser.socketId}), items count: ${eventToSend.items?.length || 0}`);
             io.to(targetUser.socketId).emit("event:update", {
               eventId,
-              eventData: eventDataForUser,
+              eventData: eventToSend,
               fromUserId: actualUserId,
               serverTs: Date.now(),
             });
@@ -189,6 +180,8 @@ io.on("connection", (socket) => {
           } else {
             console.log(`[Socket] User ${targetUserId} not found or not online (socketId missing)`);
           }
+        } else {
+          console.log(`[Socket] Skipping sender ${targetUserId}`);
         }
       });
       
@@ -303,7 +296,7 @@ app.get("/api/debug", (req, res) => {
 
 // Helper to auto-friend Alice and Bob
 const autoFriendAliceAndBob = (userId) => {
-  // Find Alice and Bob by email
+  // Find Alice and Bob by email (works regardless of whether they're online)
   let aliceId = null;
   let bobId = null;
   
@@ -312,20 +305,21 @@ const autoFriendAliceAndBob = (userId) => {
     if (user.email === 'bob@example.com') bobId = uid;
   }
   
-  // If we have both Alice and Bob, make them friends
+  // If we have both Alice and Bob registered, make them friends (regardless of online status)
   if (aliceId && bobId) {
     const friendshipKey1 = `${aliceId}_${bobId}`;
     const friendshipKey2 = `${bobId}_${aliceId}`;
     
+    // Create friendship if it doesn't exist yet
     if (!friendships.has(friendshipKey1) && !friendships.has(friendshipKey2)) {
       friendships.set(friendshipKey1, {
         userId1: aliceId,
         userId2: bobId,
         createdAt: Date.now(),
       });
-      console.log(`[API] Auto-friended Alice and Bob (${aliceId} <-> ${bobId})`);
+      console.log(`[API] Auto-friended Alice and Bob (${aliceId} <-> ${bobId}) - friendship persists regardless of online status`);
       
-      // Notify both users (even if they're not connected yet, they'll get it when they connect)
+      // Notify both users if they're currently online (they'll see it when they connect if offline)
       const alice = users.get(aliceId);
       const bob = users.get(bobId);
       
@@ -349,8 +343,9 @@ const autoFriendAliceAndBob = (userId) => {
       
       return true; // Friendship created
     }
+    return false; // Friendship already exists
   }
-  return false; // No friendship created
+  return false; // Both users not yet registered
 };
 
 // Helper to find user IDs by email
@@ -407,16 +402,13 @@ const updateEventSharedWith = () => {
         newlyAddedUsers.push(finalBobId);
       }
       
-      // Update participants array to include both Alice and Bob's names
-      const aliceName = alice?.name || 'Alice';
-      const bobName = bob?.name || 'Bob';
-      
-      if (!participants.includes(aliceName)) {
-        participants.push(aliceName);
+      // Update participants array to include both Alice and Bob's user IDs
+      if (finalAliceId && !participants.includes(finalAliceId)) {
+        participants.push(finalAliceId);
         updatedParticipants = true;
       }
-      if (!participants.includes(bobName)) {
-        participants.push(bobName);
+      if (finalBobId && !participants.includes(finalBobId)) {
+        participants.push(finalBobId);
         updatedParticipants = true;
       }
       
@@ -494,12 +486,12 @@ const ensureDefaultEvents = () => {
       id: FRIENDSGIVING_EVENT_ID,
       title: 'Friendsgiving',
       items: [
-        { id: 1, name: 'dish soap', urgent: true, claimedBy: alice?.name || 'Alice', bought: false, price: null },
+        { id: 1, name: 'dish soap', urgent: true, claimedBy: finalAliceId || null, bought: false, price: null },
         { id: 2, name: 'paper towel', urgent: false, claimedBy: null, bought: false, price: null },
         { id: 3, name: 'flower', urgent: true, claimedBy: null, bought: false, price: null },
-        { id: 4, name: 'milk 2%', urgent: true, claimedBy: alice?.name || 'Alice', bought: false, price: null },
+        { id: 4, name: 'milk 2%', urgent: true, claimedBy: finalAliceId || null, bought: false, price: null },
       ],
-      participants: [alice?.name || 'Alice', bob?.name || 'Bob'],
+      participants: [finalAliceId, finalBobId].filter(Boolean),
       ownerId: ownerId,
       sharedWith: sharedWith,
       createdAt: Date.now(),
@@ -517,12 +509,12 @@ const ensureDefaultEvents = () => {
       id: ROOMMATES_EVENT_ID,
       title: 'Unit 602 Roommates!',
       items: [
-        { id: 1, name: 'dish soap', urgent: true, claimedBy: alice?.name || 'Alice', bought: false, price: null },
+        { id: 1, name: 'dish soap', urgent: true, claimedBy: finalAliceId || null, bought: false, price: null },
         { id: 2, name: 'paper towel', urgent: false, claimedBy: null, bought: false, price: null },
         { id: 3, name: 'flower', urgent: true, claimedBy: null, bought: false, price: null },
-        { id: 4, name: 'milk 2%', urgent: true, claimedBy: alice?.name || 'Alice', bought: false, price: null },
+        { id: 4, name: 'milk 2%', urgent: true, claimedBy: finalAliceId || null, bought: false, price: null },
       ],
-      participants: [alice?.name || 'Alice', bob?.name || 'Bob'],
+      participants: [finalAliceId, finalBobId].filter(Boolean),
       ownerId: ownerId,
       sharedWith: sharedWith,
       createdAt: Date.now(),
@@ -598,210 +590,6 @@ app.post("/api/users/register", (req, res) => {
   res.json({ user: userData });
 });
 
-// Get user info
-app.get("/api/users/:userId", (req, res) => {
-  const { userId } = req.params;
-  const user = users.get(userId);
-  
-  if (!user) {
-    return res.status(404).json({ error: "User not found" });
-  }
-  
-  // Don't expose socketId to client
-  const { socketId, ...publicUser } = user;
-  res.json({ user: publicUser });
-});
-
-// Search users by email or phone
-app.post("/api/users/search", (req, res) => {
-  const { email, phone } = req.body;
-  
-  if (!email && !phone) {
-    return res.status(400).json({ error: "email or phone is required" });
-  }
-
-  const results = [];
-  for (const [userId, user] of users.entries()) {
-    if ((email && user.email === email) || (phone && user.phone === phone)) {
-      const { socketId, ...publicUser } = user;
-      results.push(publicUser);
-    }
-  }
-  
-  res.json({ users: results });
-});
-
-// --- Friend Request Endpoints ---
-
-// Send friend request
-app.post("/api/friends/request", (req, res) => {
-  const { fromUserId, toUserId } = req.body;
-  
-  if (!fromUserId || !toUserId) {
-    return res.status(400).json({ error: "fromUserId and toUserId are required" });
-  }
-
-  if (fromUserId === toUserId) {
-    return res.status(400).json({ error: "Cannot send friend request to yourself" });
-  }
-
-  // Check if already friends
-  const friendshipKey1 = `${fromUserId}_${toUserId}`;
-  const friendshipKey2 = `${toUserId}_${fromUserId}`;
-  if (friendships.has(friendshipKey1) || friendships.has(friendshipKey2)) {
-    return res.status(400).json({ error: "Already friends" });
-  }
-
-  // Check if pending request exists
-  for (const [reqId, req] of friendRequests.entries()) {
-    if (
-      req.status === 'pending' &&
-      ((req.fromUserId === fromUserId && req.toUserId === toUserId) ||
-       (req.fromUserId === toUserId && req.toUserId === fromUserId))
-    ) {
-      return res.status(400).json({ error: "Friend request already pending" });
-    }
-  }
-
-  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-  const request = {
-    id: requestId,
-    fromUserId,
-    toUserId,
-    status: 'pending',
-    createdAt: Date.now(),
-  };
-
-  friendRequests.set(requestId, request);
-  
-  // Notify recipient via socket
-  const toUser = users.get(toUserId);
-  if (toUser && toUser.socketId) {
-    const fromUser = users.get(fromUserId);
-    io.to(toUser.socketId).emit("friend:request", {
-      requestId,
-      fromUser: fromUser ? { id: fromUser.id, name: fromUser.name, email: fromUser.email, phone: fromUser.phone } : null,
-      createdAt: request.createdAt,
-    });
-  }
-
-  console.log(`[API] Friend request sent: ${fromUserId} -> ${toUserId}`);
-  res.json({ request });
-});
-
-// Get friend requests for a user
-app.get("/api/friends/requests/:userId", (req, res) => {
-  const { userId } = req.params;
-  
-  const sent = [];
-  const received = [];
-  
-  for (const [reqId, req] of friendRequests.entries()) {
-    if (req.fromUserId === userId) {
-      const toUser = users.get(req.toUserId);
-      sent.push({
-        ...req,
-        toUser: toUser ? { id: toUser.id, name: toUser.name, email: toUser.email, phone: toUser.phone } : null,
-      });
-    } else if (req.toUserId === userId) {
-      const fromUser = users.get(req.fromUserId);
-      received.push({
-        ...req,
-        fromUser: fromUser ? { id: fromUser.id, name: fromUser.name, email: fromUser.email, phone: fromUser.phone } : null,
-      });
-    }
-  }
-  
-  res.json({ sent, received });
-});
-
-// Accept friend request
-app.post("/api/friends/accept", (req, res) => {
-  const { requestId, userId } = req.body;
-  
-  if (!requestId || !userId) {
-    return res.status(400).json({ error: "requestId and userId are required" });
-  }
-
-  const request = friendRequests.get(requestId);
-  if (!request) {
-    return res.status(404).json({ error: "Friend request not found" });
-  }
-
-  if (request.toUserId !== userId) {
-    return res.status(403).json({ error: "Not authorized to accept this request" });
-  }
-
-  if (request.status !== 'pending') {
-    return res.status(400).json({ error: "Request already processed" });
-  }
-
-  request.status = 'accepted';
-  
-  // Create friendship
-  const friendshipKey = `${request.fromUserId}_${request.toUserId}`;
-  friendships.set(friendshipKey, {
-    userId1: request.fromUserId,
-    userId2: request.toUserId,
-    createdAt: Date.now(),
-  });
-
-  // Notify both users
-  const fromUser = users.get(request.fromUserId);
-  const toUser = users.get(request.toUserId);
-  
-  if (fromUser && fromUser.socketId) {
-    io.to(fromUser.socketId).emit("friend:accepted", {
-      requestId,
-      friendId: request.toUserId,
-      friend: toUser ? { id: toUser.id, name: toUser.name, email: toUser.email, phone: toUser.phone, online: toUser.online } : null,
-    });
-  }
-  
-  if (toUser && toUser.socketId) {
-    io.to(toUser.socketId).emit("friend:accepted", {
-      requestId,
-      friendId: request.fromUserId,
-      friend: fromUser ? { id: fromUser.id, name: fromUser.name, email: fromUser.email, phone: fromUser.phone, online: fromUser.online } : null,
-    });
-  }
-
-  console.log(`[API] Friend request accepted: ${request.fromUserId} <-> ${request.toUserId}`);
-  res.json({ success: true, friendship: friendships.get(friendshipKey) });
-});
-
-// Decline friend request
-app.post("/api/friends/decline", (req, res) => {
-  const { requestId, userId } = req.body;
-  
-  if (!requestId || !userId) {
-    return res.status(400).json({ error: "requestId and userId are required" });
-  }
-
-  const request = friendRequests.get(requestId);
-  if (!request) {
-    return res.status(404).json({ error: "Friend request not found" });
-  }
-
-  if (request.toUserId !== userId) {
-    return res.status(403).json({ error: "Not authorized to decline this request" });
-  }
-
-  request.status = 'declined';
-  
-  // Notify sender
-  const fromUser = users.get(request.fromUserId);
-  if (fromUser && fromUser.socketId) {
-    io.to(fromUser.socketId).emit("friend:declined", {
-      requestId,
-      toUserId: request.toUserId,
-    });
-  }
-
-  console.log(`[API] Friend request declined: ${request.fromUserId} -> ${request.toUserId}`);
-  res.json({ success: true });
-});
-
 // Get friends list
 app.get("/api/friends/:userId", (req, res) => {
   const { userId } = req.params;
@@ -856,13 +644,8 @@ app.get("/api/events/:userId", (req, res) => {
     if (event.ownerId === userId || (event.sharedWith && event.sharedWith.includes(userId))) {
       console.log(`[API] Event ${eventId} matches user ${userId}`);
       
-      // Convert item user IDs to names for display
-      const eventForUser = {
-        ...event,
-        items: convertItemUserIdsToNames(event.items || [], userId),
-      };
-      
-      userEvents.push(eventForUser);
+      // Items already have user IDs - send as-is
+      userEvents.push(event);
     } else {
       console.log(`[API] Event ${eventId} does NOT match: ownerId=${event.ownerId}, sharedWith=${JSON.stringify(event.sharedWith)}, userId=${userId}`);
     }
@@ -886,133 +669,9 @@ app.get("/api/events/:userId/:eventId", (req, res) => {
     return res.status(403).json({ error: "Not authorized to access this event" });
   }
   
-  // Convert item user IDs to names for display
-  const eventForUser = {
-    ...event,
-    items: convertItemUserIdsToNames(event.items || [], userId),
-  };
-  
-  res.json({ event: eventForUser });
+  // Items already have user IDs - send as-is
+  res.json({ event });
 });
-
-// Helper to resolve participant names to user IDs
-const resolveParticipantNamesToUserIds = (participants, ownerId) => {
-  const resolvedIds = [];
-  
-  // Find user IDs for participants by name
-  for (const participantName of participants || []) {
-    // Skip if it's already the owner ID
-    if (participantName === ownerId) {
-      if (!resolvedIds.includes(ownerId)) {
-        resolvedIds.push(ownerId);
-      }
-      continue;
-    }
-    
-    // Search for user by name (case-insensitive) or by ID
-    let found = false;
-    for (const [uid, user] of users.entries()) {
-      // Case-insensitive name matching or direct ID match
-      if ((user.name && user.name.toLowerCase() === participantName.toLowerCase()) || uid === participantName) {
-        if (!resolvedIds.includes(uid)) {
-          resolvedIds.push(uid);
-          console.log(`[API] Resolved participant "${participantName}" to user ID: ${uid} (${user.name})`);
-          found = true;
-        }
-        break;
-      }
-    }
-    
-    if (!found) {
-      console.warn(`[API] WARNING: Could not resolve participant "${participantName}" to a user ID. Available users:`, 
-        Array.from(users.entries()).map(([uid, u]) => `${u.name} (${uid})`).join(', '));
-    }
-  }
-  
-  // Always ensure owner is included
-  if (!resolvedIds.includes(ownerId)) {
-    resolvedIds.unshift(ownerId);
-  }
-  
-  return resolvedIds;
-};
-
-// Helper to convert a name to user ID (for items: claimedBy, sharedBy)
-const resolveNameToUserId = (name, ownerId) => {
-  if (!name) return null;
-  
-  // If it's already a user ID, return it
-  if (name === ownerId || users.has(name)) {
-    return name;
-  }
-  
-  // Search for user by name (case-insensitive)
-  for (const [uid, user] of users.entries()) {
-    if (user.name && user.name.toLowerCase() === name.toLowerCase()) {
-      return uid;
-    }
-  }
-  
-  // If not found, return null (will be handled by caller)
-  return null;
-};
-
-// Helper to convert user ID to name (for display)
-const resolveUserIdToName = (userId, currentUserId) => {
-  if (!userId) return null;
-  
-  // Get user by ID
-  const user = users.get(userId);
-  return user?.name || null;
-};
-
-// Helper to convert item names to user IDs
-const convertItemNamesToUserIds = (items, ownerId) => {
-  if (!Array.isArray(items)) return items;
-  
-  return items.map(item => {
-    const converted = { ...item };
-    
-    // Convert claimedBy
-    if (item.claimedBy) {
-      const userId = resolveNameToUserId(item.claimedBy, ownerId);
-      converted.claimedBy = userId;
-    }
-    
-    // Convert sharedBy array
-    if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
-      converted.sharedBy = item.sharedBy
-        .map(name => resolveNameToUserId(name, ownerId))
-        .filter(id => id !== null); // Remove any that couldn't be resolved
-    }
-    
-    return converted;
-  });
-};
-
-// Helper to convert item user IDs to names
-const convertItemUserIdsToNames = (items, currentUserId) => {
-  if (!Array.isArray(items)) return items;
-  
-  return items.map(item => {
-    const converted = { ...item };
-    
-    // Convert claimedBy
-    if (item.claimedBy) {
-      const name = resolveUserIdToName(item.claimedBy, currentUserId);
-      converted.claimedBy = name || null;
-    }
-    
-    // Convert sharedBy array
-    if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
-      converted.sharedBy = item.sharedBy
-        .map(userId => resolveUserIdToName(userId, currentUserId))
-        .filter(name => name !== null); // Remove any that couldn't be resolved
-    }
-    
-    return converted;
-  });
-};
 
 // Create or update event
 app.post("/api/events", (req, res) => {
@@ -1025,16 +684,16 @@ app.post("/api/events", (req, res) => {
   const eventIdToUse = eventId || `event_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const existingEvent = events.get(eventIdToUse);
   
-  // Always resolve participants to user IDs first (for both new and existing events)
-  // This ensures sharedWith is always correct based on participants
+  // Participants are already user IDs - use them directly for sharedWith
   let sharedWith = [userId]; // Start with owner
   
-  if (eventData.participants) {
-    const resolvedIds = resolveParticipantNamesToUserIds(eventData.participants, userId);
-    // Use resolved IDs as the source of truth for sharedWith
-    sharedWith = resolvedIds;
-    
-    console.log(`[API] Resolved participants to user IDs: ${eventData.participants} -> ${resolvedIds.join(', ')}`);
+  if (eventData.participants && Array.isArray(eventData.participants)) {
+    // Participants are already IDs, use them directly
+    sharedWith = [...eventData.participants];
+    // Ensure owner is included
+    if (!sharedWith.includes(userId)) {
+      sharedWith.unshift(userId);
+    }
     
     // Log which accounts are involved
     const involvedUsers = sharedWith.map(uid => {
@@ -1054,10 +713,12 @@ app.post("/api/events", (req, res) => {
   
   console.log(`[API] Final sharedWith: ${sharedWith.join(', ')}`);
   
+  // Items already have user IDs in claimedBy and sharedBy fields
+  const ownerId = existingEvent?.ownerId || userId;
   const event = {
     id: eventIdToUse,
     ...eventData,
-    ownerId: existingEvent?.ownerId || userId,
+    ownerId: ownerId,
     sharedWith: sharedWith,
     createdAt: existingEvent?.createdAt || Date.now(),
     updatedAt: Date.now(),
@@ -1105,6 +766,7 @@ app.post("/api/events", (req, res) => {
           console.log(`[API] Sent events:reload to user ${targetUserId} for event ${eventIdToUse}`);
         } else {
           // For regular updates, send event:update
+          // Items already have user IDs - send as-is
           io.to(targetUser.socketId).emit("event:update", {
             eventId: eventIdToUse,
             eventData: event,

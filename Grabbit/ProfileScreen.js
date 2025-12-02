@@ -605,54 +605,24 @@ export default function ProfileScreen({ navigation }) {
                   keyboardType="email-address"
                 />
 
-                <TouchableOpacity
-                  style={profileStyles.friendModalPrimaryButton}
-                  onPress={handleSendFriendRequest}
-                >
-                  <Text style={profileStyles.friendModalPrimaryText}>
-                    Send friend request
-                  </Text>
-                </TouchableOpacity>
+                <View style={{ alignItems: 'center', marginTop: 10 }}>
+                  <TouchableOpacity
+                    style={[profileStyles.friendModalPrimaryButton, { alignSelf: 'center' }]}
+                    onPress={handleSendFriendRequest}
+                  >
+                    <Text style={profileStyles.friendModalPrimaryText}>
+                      Send friend request
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : (
               <View style={{ marginTop: 10, flex: 1 }}>
-                {friendRequests.length === 0 ? (
+                {
                   <Text style={profileStyles.emptyText}>
                     No pending requests right now.
                   </Text>
-                ) : (
-                  <ScrollView style={{ maxHeight: 200 }}>
-                    {friendRequests.map(req => (
-                      <View key={req.id} style={profileStyles.requestRow}>
-                        <View style={profileStyles.friendAvatar}>
-                          <Text style={profileStyles.friendAvatarText}>
-                            {req.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={profileStyles.friendName}>{req.name}</Text>
-                          <Text style={profileStyles.friendSubText}>
-                            {req.contact}
-                          </Text>
-                        </View>
-                        <View style={profileStyles.requestButtons}>
-                          <TouchableOpacity
-                            style={profileStyles.requestAccept}
-                            onPress={() => handleAcceptRequest(req)}
-                          >
-                            <FontAwesome5 name="check" size={12} color="#fff" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={profileStyles.requestDecline}
-                            onPress={() => handleDeclineRequest(req)}
-                          >
-                            <FontAwesome5 name="times" size={12} color="#fff" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
+                }
               </View>
             )}
           </View>

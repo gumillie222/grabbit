@@ -13,54 +13,33 @@ export const api = {
     return response.json();
   },
 
+  // Hardcoded for demo - user search always returns empty
   searchUsers: async (email, phone) => {
-    const response = await fetch(`${SERVER_URL}/api/users/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, phone }),
-    });
-    if (!response.ok) throw new Error('Failed to search users');
-    return response.json();
+    // Return empty for demo
+    return { users: [] };
   },
 
-  // Friend request endpoints
-  sendFriendRequest: async (fromUserId, toUserId) => {
-    const response = await fetch(`${SERVER_URL}/api/friends/request`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromUserId, toUserId }),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to send friend request');
-    }
-    return response.json();
-  },
-
+  // Hardcoded for demo - friend requests always return empty
   getFriendRequests: async (userId) => {
-    const response = await fetch(`${SERVER_URL}/api/friends/requests/${userId}`);
-    if (!response.ok) throw new Error('Failed to get friend requests');
-    return response.json();
+    return { sent: [], received: [] };
   },
 
+  // Hardcoded for demo - sending friend request does nothing
+  sendFriendRequest: async (fromUserId, toUserId) => {
+    // Simulate success but do nothing
+    return { request: { id: 'stub', fromUserId, toUserId, status: 'pending', createdAt: Date.now() } };
+  },
+
+  // Hardcoded for demo - accepting friend request does nothing
   acceptFriendRequest: async (requestId, userId) => {
-    const response = await fetch(`${SERVER_URL}/api/friends/accept`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, userId }),
-    });
-    if (!response.ok) throw new Error('Failed to accept friend request');
-    return response.json();
+    // Simulate success but do nothing
+    return { success: true };
   },
 
+  // Hardcoded for demo - declining friend request does nothing
   declineFriendRequest: async (requestId, userId) => {
-    const response = await fetch(`${SERVER_URL}/api/friends/decline`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, userId }),
-    });
-    if (!response.ok) throw new Error('Failed to decline friend request');
-    return response.json();
+    // Simulate success but do nothing
+    return { success: true };
   },
 
   getFriends: async (userId) => {
