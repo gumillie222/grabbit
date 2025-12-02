@@ -328,7 +328,7 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={profileStyles.archiveTitle}>{event.title}</Text>
                 <Text style={profileStyles.archiveSubtitle}>
                   {event.items?.length || 0} items ·{' '}
-                  {(event.participants || ['Me']).length} people
+                  {(event.participants || []).length} people
                 </Text>
               </TouchableOpacity>
             </View>
@@ -683,7 +683,7 @@ export default function ProfileScreen({ navigation }) {
               <View
                 style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}
               >
-                {(selectedArchivedEvent?.participants || ['Me']).map((p, idx) => (
+                {(selectedArchivedEvent?.participants || []).map((p, idx) => (
                   <View key={idx} style={profileStyles.chip}>
                     <Text style={profileStyles.chipText}>{p}</Text>
                   </View>

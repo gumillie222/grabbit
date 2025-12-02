@@ -65,7 +65,7 @@ export default function HomeScreen({ navigation }) {
       // always respect the participants saved on the event
       participants: event.participants && event.participants.length > 0
         ? event.participants
-        : ['Me'],
+        : [],
     });
   };
 

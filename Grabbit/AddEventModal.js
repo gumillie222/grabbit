@@ -49,11 +49,11 @@ export default function AddEventModal({
   const [isConnected, setIsConnected] = useState(null); // null = unknown, true = connected, false = offline
 
   // committed participants for this event
-  const [selectedParticipants, setSelectedParticipants] = useState(['Me']); // always includes "Me"
+  const [selectedParticipants, setSelectedParticipants] = useState([]);
 
   // friends picker modal + staging state
   const [friendsModalVisible, setFriendsModalVisible] = useState(false);
-  const [tempSelectedFriends, setTempSelectedFriends] = useState([]); // only friend names (no "Me")
+  const [tempSelectedFriends, setTempSelectedFriends] = useState([]);
 
   // optional fallback if no friends are configured yet
   const fallbackFriends = [];
@@ -71,7 +71,7 @@ export default function AddEventModal({
       setIsLoadingSuggestions(false);
       setSelectedItems([]);
       setIsConnected(null);
-      setSelectedParticipants(['Me']);
+      setSelectedParticipants(currentUser?.name ? [currentUser.name] : []);
       setFriendsModalVisible(false);
       setTempSelectedFriends([]);
     }
@@ -230,9 +230,9 @@ export default function AddEventModal({
   // ----- Friends modal helpers -----
 
   const openFriendsModal = () => {
-    // temp state only contains friends (no "Me")
+    // temp state only contains friends (no current user)
     const currentFriends = selectedParticipants.filter(
-      (name) => name !== 'Me'
+      (name) => name !== currentUser?.name
     );
     setTempSelectedFriends(currentFriends);
     setFriendsModalVisible(true);
@@ -253,8 +253,9 @@ export default function AddEventModal({
   };
 
   const confirmFriendsSelection = () => {
-    // Commit changes: always keep "Me" plus the selected friends
-    setSelectedParticipants(['Me', ...tempSelectedFriends]);
+    // Commit changes: always keep current user plus the selected friends
+    const newParticipants = [currentUser?.name, ...tempSelectedFriends].filter(Boolean);
+    setSelectedParticipants(newParticipants);
     setFriendsModalVisible(false);
   };
 
@@ -289,29 +290,29 @@ export default function AddEventModal({
                 <FontAwesome5 name="users" size={18} color={colors.text} />
               </View>
 
-              {/* Show Me plus any selected friends as round avatars with single letter */}
-              {selectedParticipants.map((participant, index) => (
-                <View
-                  key={`${participant}-${index}`}
-                  style={[
-                    {
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor:
-                        participant === 'Me' ? '#A89F91' : '#D6CFC4',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    },
-                  ]}
-                >
-                  <Text style={detailStyles.avatarTextSmall}>
-                    {participant === 'Me'
-                      ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
-                      : participant.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              ))}
+              {/* Show current user plus any selected friends as round avatars with single letter */}
+              {selectedParticipants.map((participant, index) => {
+                const isCurrentUser = participant === currentUser?.name;
+                return (
+                  <View
+                    key={`${participant}-${index}`}
+                    style={[
+                      {
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: isCurrentUser ? '#A89F91' : '#D6CFC4',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      },
+                    ]}
+                  >
+                    <Text style={detailStyles.avatarTextSmall}>
+                      {participant?.charAt(0).toUpperCase() || '?'}
+                    </Text>
+                  </View>
+                );
+              })}
 
               {/* Plus chip – same size as participant chips */}
               <TouchableOpacity

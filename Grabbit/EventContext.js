@@ -80,17 +80,13 @@ export const EventProvider = ({ children }) => {
       const response = await api.getEvents(currentUser.id);
       const backendEvents = response.events || [];
       
-      // Convert backend events to app format
-      // Convert current user's name to "Me" in participants
+      // Convert backend events to app format - keep actual user names/IDs
       const formattedEvents = backendEvents.map(e => {
-        const participants = (e.participants || []).map(p => 
-          p === currentUser.name ? 'Me' : p
-        );
         return {
           id: e.id,
           title: e.title,
           items: e.items || [],
-          participants: participants,
+          participants: e.participants || [],
           isNew: false,
           archived: false,
         };
@@ -124,6 +120,13 @@ export const EventProvider = ({ children }) => {
   // Set up socket connection for real-time updates
   useEffect(() => {
     if (!currentUser?.id) return;
+
+    // Disconnect existing socket if any
+    if (socketRef.current) {
+      console.log('[EventContext] Disconnecting old socket before reconnecting...');
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
 
     const socket = io(SERVER_URL, {
       transports: ['websocket'],
@@ -185,20 +188,14 @@ export const EventProvider = ({ children }) => {
         return; // Ignore our own updates
       }
 
-      // Convert current user's name to "Me" in participants
-      const convertParticipants = (participants) => {
-        if (!participants || !Array.isArray(participants)) return [];
-        return participants.map(p => p === currentUser.name ? 'Me' : p);
-      };
-
-      // Update the event in our local state
+      // Update the event in our local state - keep actual user names/IDs
       setEvents(prev => {
         const existingIndex = prev.findIndex(e => e.id === eventId);
         if (existingIndex >= 0) {
           // Update existing event
           const updated = [...prev];
           const eventDataParticipants = eventData.participants 
-            ? convertParticipants(eventData.participants)
+            ? eventData.participants
             : updated[existingIndex].participants;
           updated[existingIndex] = {
             ...updated[existingIndex],
@@ -213,7 +210,7 @@ export const EventProvider = ({ children }) => {
             id: eventId,
             title: eventData.title,
             items: eventData.items || [],
-            participants: convertParticipants(eventData.participants || []),
+            participants: eventData.participants || [],
             isNew: false,
             archived: false,
           }, ...prev];
@@ -222,7 +219,11 @@ export const EventProvider = ({ children }) => {
     });
 
     return () => {
-      socket.disconnect();
+      console.log('[EventContext] Cleaning up socket connection');
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
   }, [currentUser?.id, reloadEvents]);
 
@@ -252,10 +253,16 @@ export const EventProvider = ({ children }) => {
   // --- CRUD helpers ---
 
   const addEvent = async (newEvent) => {
+    // Ensure current user is in participants if not already
+    const participants = newEvent.participants ?? [];
+    const participantsWithUser = participants.includes(currentUser?.name) 
+      ? participants 
+      : [currentUser?.name, ...participants].filter(Boolean);
+    
     const eventToAdd = {
       ...newEvent,
       items: newEvent.items ?? [],
-      participants: newEvent.participants ?? ['Me'],
+      participants: participantsWithUser,
       isNew: true,
       archived: false,
     };
@@ -265,14 +272,9 @@ export const EventProvider = ({ children }) => {
     // Sync with backend
     if (currentUser?.id) {
       try {
-        // Convert "Me" back to current user's name for backend
-        const participantsForBackend = eventToAdd.participants.map(p => 
-          p === 'Me' ? currentUser.name : p
-        );
-        
-        // Get friend IDs from participants (excluding "Me")
+        // Get friend IDs from participants
         const participantFriends = friends.filter(f => 
-          participantsForBackend.includes(f.name)
+          eventToAdd.participants.includes(f.name)
         );
         const sharedWith = [currentUser.id, ...participantFriends.map(f => f.id)].filter(Boolean);
         
@@ -282,18 +284,18 @@ export const EventProvider = ({ children }) => {
         await api.saveEvent(currentUser.id, newEvent.id, {
           title: eventToAdd.title,
           items: eventToAdd.items,
-          participants: participantsForBackend,
+          participants: eventToAdd.participants,
           sharedWith,
         });
         
-        // Send real-time update via socket (with actual names, not "Me")
+        // Send real-time update via socket
         if (socketRef.current) {
           socketRef.current.emit('event:update', {
             eventId: newEvent.id,
             eventData: {
               title: eventToAdd.title,
               items: eventToAdd.items,
-              participants: participantsForBackend,
+              participants: eventToAdd.participants,
             },
           });
         }
@@ -315,27 +317,23 @@ export const EventProvider = ({ children }) => {
       try {
         const event = events.find(e => e.id === eventId) || archivedEvents.find(e => e.id === eventId);
         if (event) {
-          // Convert "Me" back to current user's name for backend
-          const participantsForBackend = (event.participants || []).map(p => 
-            p === 'Me' ? currentUser.name : p
-          );
-          
           await api.saveEvent(currentUser.id, eventId, {
             ...event,
             items: updatedItems,
-            participants: participantsForBackend,
+            participants: event.participants || [],
           });
           
-          // Send real-time update via socket (with actual names, not "Me")
+          // Send real-time update via socket
           if (socketRef.current) {
             socketRef.current.emit('event:update', {
               eventId,
               eventData: {
                 ...event,
                 items: updatedItems,
-                participants: participantsForBackend,
+                participants: event.participants || [],
               },
             });
+            console.log(`[EventContext] Sent event:update for event ${eventId} with ${updatedItems.length} items`);
           }
         }
       } catch (err) {
@@ -362,21 +360,16 @@ export const EventProvider = ({ children }) => {
       try {
         const event = previousEvents.find(e => e.id === eventId) || previousArchivedEvents.find(e => e.id === eventId);
         if (event) {
-          // Convert "Me" back to current user's name for backend
-          const participantsForBackend = updatedParticipants.map(p => 
-            p === 'Me' ? currentUser.name : p
-          );
-          
           // Don't send sharedWith - let backend resolve it from participants
           const { sharedWith, ...eventWithoutSharedWith } = event;
           
           await api.saveEvent(currentUser.id, eventId, {
             ...eventWithoutSharedWith,
-            participants: participantsForBackend,
+            participants: updatedParticipants,
             // Let backend resolve sharedWith from participants
           });
           
-          // Send real-time update via socket (with actual names, not "Me")
+          // Send real-time update via socket
           // Don't send sharedWith - let backend resolve it from participants
           if (socketRef.current) {
             const { sharedWith: _, ...eventWithoutSharedWithSocket } = event;
@@ -384,7 +377,7 @@ export const EventProvider = ({ children }) => {
               eventId,
               eventData: {
                 ...eventWithoutSharedWithSocket,
-                participants: participantsForBackend,
+                participants: updatedParticipants,
               },
             });
           }

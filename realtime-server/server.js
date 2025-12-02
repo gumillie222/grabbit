@@ -100,10 +100,17 @@ io.on("connection", (socket) => {
       return;
     }
     
+    // Get current userId from socket (may have changed if user switched accounts)
+    const currentUserId = socket.handshake.query.userId || userId;
+    const userInfo = getUserBySocketId(socket.id);
+    const actualUserId = userInfo?.userId || currentUserId;
+    
+    console.log(`[Socket] event:update from userId=${actualUserId} (socketId=${socket.id})`);
+    
     // Update event in storage
     const existingEvent = events.get(eventId);
     if (existingEvent) {
-      const ownerId = existingEvent.ownerId || userId;
+      const ownerId = existingEvent.ownerId || actualUserId;
       
       // If participants are being updated, resolve them to user IDs and update sharedWith
       let sharedWith = existingEvent.sharedWith || [ownerId];
@@ -163,7 +170,7 @@ io.on("connection", (socket) => {
       
       // Notify all users who have access to this event
       sharedWith.forEach(targetUserId => {
-        if (targetUserId !== userId) { // Don't send back to sender
+        if (targetUserId !== actualUserId) { // Don't send back to sender
           const targetUser = users.get(targetUserId);
           if (targetUser && targetUser.socketId) {
             const eventToSend = events.get(eventId);
@@ -175,14 +182,17 @@ io.on("connection", (socket) => {
             io.to(targetUser.socketId).emit("event:update", {
               eventId,
               eventData: eventDataForUser,
-              fromUserId: userId,
+              fromUserId: actualUserId,
               serverTs: Date.now(),
             });
+            console.log(`[Socket] Sent event:update to user ${targetUserId} (socketId=${targetUser.socketId})`);
+          } else {
+            console.log(`[Socket] User ${targetUserId} not found or not online (socketId missing)`);
           }
         }
       });
       
-      console.log(`[Socket] Event updated: ${eventId} by ${userId}, sharedWith: ${sharedWith.join(', ')}`);
+      console.log(`[Socket] Event updated: ${eventId} by ${actualUserId}, sharedWith: ${sharedWith.join(', ')}`);
     }
   });
 
@@ -371,30 +381,54 @@ const updateEventSharedWith = () => {
   const finalAliceId = directAliceId || aliceId;
   const finalBobId = directBobId || bobId;
   
+  const alice = finalAliceId ? users.get(finalAliceId) : null;
+  const bob = finalBobId ? users.get(finalBobId) : null;
+  
   console.log(`[API] updateEventSharedWith: aliceId=${finalAliceId}, bobId=${finalBobId}`);
   
   // Update existing events to include available user IDs
   for (const [eventId, event] of events.entries()) {
     if (eventId === FRIENDSGIVING_EVENT_ID || eventId === ROOMMATES_EVENT_ID) {
       const sharedWith = event.sharedWith || [];
-      let updated = false;
+      const participants = event.participants || [];
+      let updatedSharedWith = false;
+      let updatedParticipants = false;
       const newlyAddedUsers = [];
       
+      // Update sharedWith array
       if (finalAliceId && !sharedWith.includes(finalAliceId)) {
         sharedWith.push(finalAliceId);
-        updated = true;
+        updatedSharedWith = true;
         newlyAddedUsers.push(finalAliceId);
       }
       if (finalBobId && !sharedWith.includes(finalBobId)) {
         sharedWith.push(finalBobId);
-        updated = true;
+        updatedSharedWith = true;
         newlyAddedUsers.push(finalBobId);
       }
       
-      if (updated) {
-        event.sharedWith = sharedWith;
+      // Update participants array to include both Alice and Bob's names
+      const aliceName = alice?.name || 'Alice';
+      const bobName = bob?.name || 'Bob';
+      
+      if (!participants.includes(aliceName)) {
+        participants.push(aliceName);
+        updatedParticipants = true;
+      }
+      if (!participants.includes(bobName)) {
+        participants.push(bobName);
+        updatedParticipants = true;
+      }
+      
+      if (updatedSharedWith || updatedParticipants) {
+        if (updatedSharedWith) {
+          event.sharedWith = sharedWith;
+        }
+        if (updatedParticipants) {
+          event.participants = participants;
+        }
         event.updatedAt = Date.now();
-        console.log(`[API] Updated event ${eventId} sharedWith to include ${sharedWith.join(', ')}`);
+        console.log(`[API] Updated event ${eventId} sharedWith: [${sharedWith.join(', ')}], participants: [${participants.join(', ')}]`);
         
         // Notify newly added users to reload events
         newlyAddedUsers.forEach(userId => {
@@ -405,7 +439,7 @@ const updateEventSharedWith = () => {
           }
         });
       } else {
-        console.log(`[API] Event ${eventId} sharedWith already includes both users: ${sharedWith.join(', ')}`);
+        console.log(`[API] Event ${eventId} sharedWith already includes both users: ${sharedWith.join(', ')}, participants: [${participants.join(', ')}]`);
       }
     }
   }
@@ -863,24 +897,23 @@ app.get("/api/events/:userId/:eventId", (req, res) => {
 
 // Helper to resolve participant names to user IDs
 const resolveParticipantNamesToUserIds = (participants, ownerId) => {
-  const resolvedIds = [ownerId]; // Always include owner
-  
-  // Get owner's name for "Me" resolution
-  const owner = users.get(ownerId);
-  const ownerName = owner?.name;
+  const resolvedIds = [];
   
   // Find user IDs for participants by name
   for (const participantName of participants || []) {
-    // Skip if it's "Me" (which should be the owner) or if it's already the owner ID
-    if (participantName === 'Me' || participantName === ownerId || participantName === ownerName) {
-      continue; // Already included as owner
+    // Skip if it's already the owner ID
+    if (participantName === ownerId) {
+      if (!resolvedIds.includes(ownerId)) {
+        resolvedIds.push(ownerId);
+      }
+      continue;
     }
     
-    // Search for user by name (case-insensitive)
+    // Search for user by name (case-insensitive) or by ID
     let found = false;
     for (const [uid, user] of users.entries()) {
-      // Case-insensitive name matching
-      if (user.name && user.name.toLowerCase() === participantName.toLowerCase() && uid !== ownerId) {
+      // Case-insensitive name matching or direct ID match
+      if ((user.name && user.name.toLowerCase() === participantName.toLowerCase()) || uid === participantName) {
         if (!resolvedIds.includes(uid)) {
           resolvedIds.push(uid);
           console.log(`[API] Resolved participant "${participantName}" to user ID: ${uid} (${user.name})`);
@@ -896,6 +929,11 @@ const resolveParticipantNamesToUserIds = (participants, ownerId) => {
     }
   }
   
+  // Always ensure owner is included
+  if (!resolvedIds.includes(ownerId)) {
+    resolvedIds.unshift(ownerId);
+  }
+  
   return resolvedIds;
 };
 
@@ -903,13 +941,9 @@ const resolveParticipantNamesToUserIds = (participants, ownerId) => {
 const resolveNameToUserId = (name, ownerId) => {
   if (!name) return null;
   
-  // Get owner's name for "Me" resolution
-  const owner = users.get(ownerId);
-  const ownerName = owner?.name;
-  
-  // If it's "Me" or matches owner's name, return owner ID
-  if (name === 'Me' || name === ownerId || name === ownerName) {
-    return ownerId;
+  // If it's already a user ID, return it
+  if (name === ownerId || users.has(name)) {
+    return name;
   }
   
   // Search for user by name (case-insensitive)
@@ -926,11 +960,6 @@ const resolveNameToUserId = (name, ownerId) => {
 // Helper to convert user ID to name (for display)
 const resolveUserIdToName = (userId, currentUserId) => {
   if (!userId) return null;
-  
-  // If it's the current user, return "Me"
-  if (userId === currentUserId) {
-    return 'Me';
-  }
   
   // Get user by ID
   const user = users.get(userId);

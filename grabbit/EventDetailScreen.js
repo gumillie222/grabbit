@@ -70,9 +70,9 @@ export default function EventDetailScreen({ route, navigation }) {
       return;
     }
     
-    // Check if current user is in participants (as "Me" or their actual name)
+    // Check if current user is in participants
     const userIsParticipant = event.participants?.some(p => 
-      p === 'Me' || p === currentUser.name
+      p === currentUser.name || p === currentUser.id
     );
     
     if (!userIsParticipant) {
@@ -100,7 +100,7 @@ export default function EventDetailScreen({ route, navigation }) {
   const [editingPriceValue, setEditingPriceValue] = useState('');
 
   // sharers when buying a new item
-  const [buySharedBy, setBuySharedBy] = useState(['Me']);
+  const [buySharedBy, setBuySharedBy] = useState([]);
   const [shareDropdownVisible, setShareDropdownVisible] = useState(false);
 
   // editing sharedBy for items already in Recently Bought
@@ -115,8 +115,15 @@ export default function EventDetailScreen({ route, navigation }) {
   );
 
   const [participants, setParticipants] = useState(
-    initialParticipants || (isNew ? ['Me'] : ['Me', 'A'])
+    initialParticipants || (isNew && currentUser?.name ? [currentUser.name] : [])
   );
+
+  // Sync participants with contextEvent when it changes
+  useEffect(() => {
+    if (contextEvent?.participants && Array.isArray(contextEvent.participants)) {
+      setParticipants(contextEvent.participants);
+    }
+  }, [contextEvent?.participants]);
 
   const [participantsModalVisible, setParticipantsModalVisible] =
     useState(false);
@@ -155,6 +162,13 @@ export default function EventDetailScreen({ route, navigation }) {
   // Set up socket connection for real-time updates on this specific event
   useEffect(() => {
     if (!eventId || !currentUser?.id || isReadOnly) return;
+
+    // Disconnect existing socket if any
+    if (socketRef.current) {
+      console.log('[EventDetailScreen] Disconnecting old socket before reconnecting...');
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
 
     const socket = io(SERVER_URL, {
       transports: ['websocket'],
@@ -248,7 +262,10 @@ export default function EventDetailScreen({ route, navigation }) {
       if (participantsUpdateTimeoutRef.current) {
         clearTimeout(participantsUpdateTimeoutRef.current);
       }
-      socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
   }, [eventId, currentUser?.id, isReadOnly]);
 
@@ -354,27 +371,14 @@ export default function EventDetailScreen({ route, navigation }) {
 
   // --- SPLIT LOGIC (uses sharedBy if present) ---
   const splitData = useMemo(() => {
-    // Helper to normalize a name to match the participants array format
-    // Participants array uses "Me" for the current user, actual names for others
-    const normalizeToParticipantName = (name) => {
-      if (!name) return 'Me';
-      // If name matches current user's name, convert to "Me" to match participants array
-      if (name === currentUser?.name) return 'Me';
-      // If it's already "Me", keep it
-      if (name === 'Me') return 'Me';
-      // Otherwise, use the name as-is (should match a participant name)
-      return name;
-    };
-
     const balances = {};
     participants.forEach(p => (balances[p] = 0));
 
     // Filter bought items to only include those with valid buyers in participants
     const bought = items.filter(item => {
       if (!item.bought || !item.price || parseFloat(item.price) <= 0) return false;
-      const rawBuyer = item.claimedBy ?? 'Me';
-      const buyer = normalizeToParticipantName(rawBuyer);
-      return participants.includes(buyer);
+      const buyer = item.claimedBy || currentUser?.name;
+      return buyer && participants.includes(buyer);
     });
     
     // Calculate total spent only from items with valid participants
@@ -385,8 +389,7 @@ export default function EventDetailScreen({ route, navigation }) {
 
     bought.forEach(item => {
       const price = parseFloat(item.price);
-      const rawBuyer = item.claimedBy ?? 'Me';
-      const buyer = normalizeToParticipantName(rawBuyer);
+      const buyer = item.claimedBy || currentUser?.name;
       
       // Skip items where the buyer is not in the current participants list
       if (!participants.includes(buyer)) {
@@ -398,10 +401,7 @@ export default function EventDetailScreen({ route, navigation }) {
       let rawSharers = [];
       if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
         // Filter sharedBy to only include current participants
-        rawSharers = item.sharedBy.filter(name => {
-          const normalized = normalizeToParticipantName(name);
-          return participants.includes(normalized);
-        });
+        rawSharers = item.sharedBy.filter(name => participants.includes(name));
       }
       
       // If no valid sharers after filtering, default to buyer only
@@ -409,9 +409,8 @@ export default function EventDetailScreen({ route, navigation }) {
         rawSharers = [buyer];
       }
       
-      // Normalize sharer names to match participants array format
-      const sharers = rawSharers.map(s => normalizeToParticipantName(s))
-        .filter(s => participants.includes(s)); // Double-check all sharers are in participants
+      // Filter sharers to only include current participants
+      const sharers = rawSharers.filter(s => participants.includes(s));
       
       // Skip if no valid sharers remain
       if (sharers.length === 0) {
@@ -500,7 +499,7 @@ export default function EventDetailScreen({ route, navigation }) {
     setItems(current =>
       current.map(item =>
         item.id === id
-          ? { ...item, claimedBy: item.claimedBy === 'Me' ? null : 'Me' }
+          ? { ...item, claimedBy: item.claimedBy === currentUser?.name ? null : currentUser?.name }
           : item
       )
     );
@@ -548,7 +547,8 @@ export default function EventDetailScreen({ route, navigation }) {
     if (!item.bought) {
       setSelectedItem(item);
       setPriceInput('');
-      setBuySharedBy([...participants]); // default share: everyone
+      // Default share: everyone in participants (or just current user if empty)
+      setBuySharedBy(participants.length > 0 ? [...participants] : [currentUser?.name].filter(Boolean));
       setShareDropdownVisible(false);
       setBuyModalVisible(true);
     } else {
@@ -605,8 +605,8 @@ export default function EventDetailScreen({ route, navigation }) {
                 ...item,
                 bought: true,
                 price: priceInput,
-                claimedBy: 'Me',
-                sharedBy: buySharedBy,
+                claimedBy: currentUser?.name || null,
+                sharedBy: buySharedBy.length > 0 ? buySharedBy : [currentUser?.name].filter(Boolean),
               }
             : item
         )
@@ -624,7 +624,7 @@ export default function EventDetailScreen({ route, navigation }) {
     const currentSharers =
       Array.isArray(item.sharedBy) && item.sharedBy.length > 0
         ? item.sharedBy
-        : [item.claimedBy ?? 'Me'];
+        : [item.claimedBy || currentUser?.name].filter(Boolean);
     setSharedByDraft(currentSharers);
     setSharedByEditItemId(item.id);
     setSharedByModalVisible(true);
@@ -634,7 +634,7 @@ export default function EventDetailScreen({ route, navigation }) {
     setSharedByDraft(prev => {
       const isSelected = prev.includes(name);
       let next = isSelected ? prev.filter(n => n !== name) : [...prev, name];
-      if (next.length === 0) next = ['Me'];
+      if (next.length === 0) next = [currentUser?.name].filter(Boolean);
       return next;
     });
   };
@@ -647,7 +647,7 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const confirmEditSharedBy = () => {
     if (sharedByEditItemId == null) return;
-    const cleaned = sharedByDraft.length ? sharedByDraft : ['Me'];
+    const cleaned = sharedByDraft.length ? sharedByDraft : [currentUser?.name].filter(Boolean);
     setItems(current =>
       current.map(item =>
         item.id === sharedByEditItemId ? { ...item, sharedBy: cleaned } : item
@@ -789,12 +789,12 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const confirmParticipantsSelection = async () => {
-    // New participant list: Me + whatever was selected
-    const newParticipants = ['Me', ...tempParticipants];
+    // New participant list: current user + whatever was selected
+    const newParticipants = [currentUser?.name, ...tempParticipants].filter(Boolean);
     
     // Check if any participants are being removed
     const removedParticipants = participants.filter(
-      p => p !== 'Me' && !newParticipants.includes(p)
+      p => p !== currentUser?.name && !newParticipants.includes(p)
     );
     
     // If someone is being removed, show confirmation dialog
@@ -809,7 +809,7 @@ export default function EventDetailScreen({ route, navigation }) {
             style: 'cancel',
             onPress: () => {
               // Reset temp participants to current state
-              const currentFriends = participants.filter(name => name !== 'Me');
+              const currentFriends = participants.filter(name => name !== currentUser?.name);
               setTempParticipants(currentFriends);
             },
           },
@@ -831,17 +831,17 @@ export default function EventDetailScreen({ route, navigation }) {
                       newParticipants.includes(name)
                     );
             
-                    // If claimedBy has been removed, fall back to "Me"
+                    // If claimedBy has been removed, fall back to current user
                     let cleanedClaimedBy = item.claimedBy;
                     if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
-                      cleanedClaimedBy = 'Me';
+                      cleanedClaimedBy = currentUser?.name || null;
                     }
                     
                     // If sharedBy becomes empty after cleaning and item is bought, 
-                    // default to the buyer (or "Me" if buyer was removed)
+                    // default to the buyer (or current user if buyer was removed)
                     let finalSharedBy = cleanedSharedBy;
                     if (item.bought && finalSharedBy.length === 0) {
-                      finalSharedBy = [cleanedClaimedBy || 'Me'];
+                      finalSharedBy = [cleanedClaimedBy || currentUser?.name].filter(Boolean);
                     }
             
                     return {
@@ -855,7 +855,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 // Also clean the current selection used in the buy modal
                 setBuySharedBy(prev => {
                   const filtered = prev.filter(name => newParticipants.includes(name));
-                  return filtered.length ? filtered : ['Me'];
+                  return filtered.length ? filtered : [currentUser?.name].filter(Boolean);
                 });
                 
                 // Sync with backend via EventContext
@@ -873,7 +873,7 @@ export default function EventDetailScreen({ route, navigation }) {
                   [{ text: 'OK' }]
                 );
                 // Reset temp participants to current state on error
-                const currentFriends = participants.filter(name => name !== 'Me');
+                const currentFriends = participants.filter(name => name !== currentUser?.name);
                 setTempParticipants(currentFriends);
               }
             },
@@ -898,17 +898,17 @@ export default function EventDetailScreen({ route, navigation }) {
             newParticipants.includes(name)
           );
   
-          // If claimedBy has been removed, fall back to "Me"
+          // If claimedBy has been removed, fall back to current user
           let cleanedClaimedBy = item.claimedBy;
           if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
-            cleanedClaimedBy = 'Me';
+            cleanedClaimedBy = currentUser?.name || null;
           }
           
           // If sharedBy becomes empty after cleaning and item is bought, 
-          // default to the buyer (or "Me" if buyer was removed)
+          // default to the buyer (or current user if buyer was removed)
           let finalSharedBy = cleanedSharedBy;
           if (item.bought && finalSharedBy.length === 0) {
-            finalSharedBy = [cleanedClaimedBy || 'Me'];
+            finalSharedBy = [cleanedClaimedBy || currentUser?.name].filter(Boolean);
           }
   
           return {
@@ -922,7 +922,7 @@ export default function EventDetailScreen({ route, navigation }) {
       // Also clean the current selection used in the buy modal
       setBuySharedBy(prev => {
         const filtered = prev.filter(name => newParticipants.includes(name));
-        return filtered.length ? filtered : ['Me'];
+        return filtered.length ? filtered : [currentUser?.name].filter(Boolean);
       });
       
       // Sync with backend via EventContext
@@ -955,24 +955,18 @@ export default function EventDetailScreen({ route, navigation }) {
         let rawSharers =
           Array.isArray(item.sharedBy) && item.sharedBy.length > 0
             ? item.sharedBy
-            : [item.claimedBy ?? 'Me'];
+            : [item.claimedBy || currentUser?.name].filter(Boolean);
         
         // Filter sharers to only include current participants
-        const sharers = rawSharers.filter(name => {
-          // Normalize name: if it's the current user's name, treat as "Me"
-          const normalizedName = name === currentUser?.name ? 'Me' : name;
-          return participants.includes(normalizedName);
-        });
+        const sharers = rawSharers.filter(name => participants.includes(name));
         
         // Skip items with no valid sharers
         if (sharers.length === 0) return;
 
         const perPerson = price / sharers.length;
         sharers.forEach(person => {
-          // Normalize person name for spending calculation
-          const normalizedPerson = person === currentUser?.name ? 'Me' : person;
-          if (participants.includes(normalizedPerson)) {
-            spending[normalizedPerson] = (spending[normalizedPerson] || 0) + perPerson;
+          if (participants.includes(person)) {
+            spending[person] = (spending[person] || 0) + perPerson;
           }
         });
       });
@@ -1105,7 +1099,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 isReadOnly ? showArchivedAlert() : toggleItemClaim(item.id)
               }
             >
-              {item.claimedBy === 'Me' ? (
+              {item.claimedBy === currentUser?.name ? (
                 <View style={detailStyles.avatarSmallSelected}>
                   <Text style={detailStyles.avatarTextSmall}>
                     {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
@@ -1134,7 +1128,7 @@ export default function EventDetailScreen({ route, navigation }) {
         )}
 
         {/* buyer badge on recent list */}
-        {!isActiveList && item.claimedBy === 'Me' && (
+        {!isActiveList && item.claimedBy === currentUser?.name && (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>
               {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
@@ -1234,23 +1228,19 @@ export default function EventDetailScreen({ route, navigation }) {
                 </Text>
 
                 {sharers.map((name, index) => {
-                  // Normalize name for display
-                  const displayName = name === currentUser?.name ? 'Me' : name;
-                  // Use index in key to avoid duplicate "Me" keys
+                  const isCurrentUser = name === currentUser?.name;
                   const uniqueKey = `${item.id}-${name}-${index}`;
                   return (
                     <View
                       key={uniqueKey}
                       style={
-                        displayName === 'Me'
+                        isCurrentUser
                           ? [detailStyles.avatarSmallSelected, { marginRight: 6 }]
                           : [detailStyles.avatarSmall, { marginRight: 6 }]
                       }
                     >
                       <Text style={detailStyles.avatarTextSmall}>
-                        {displayName === 'Me' 
-                          ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
-                          : displayName.charAt(0).toUpperCase()}
+                        {name?.charAt(0).toUpperCase() || '?'}
                       </Text>
                     </View>
                   );
@@ -1420,16 +1410,18 @@ export default function EventDetailScreen({ route, navigation }) {
             color={colors.text}
             style={{ marginRight: 8 }}
           />
-          {participants.map((participant, index) => (
-            <View
-              key={index}
-              style={detailStyles.avatarSmall }
-            >
-              <Text style={detailStyles.avatarTextSmall}>
-                {participant.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          ))}
+          {participants.map((participant, index) => {
+            return (
+              <View
+                key={index}
+                style={detailStyles.avatarSmall }
+              >
+                <Text style={detailStyles.avatarTextSmall}>
+                  {participant?.charAt(0).toUpperCase() || '?'}
+                </Text>
+              </View>
+            );
+          })}
           <TouchableOpacity
             style={detailStyles.addParticipant}
             onPress={isReadOnly ? showArchivedAlert : openParticipantsModal}
@@ -1507,17 +1499,19 @@ export default function EventDetailScreen({ route, navigation }) {
 
             <View>
               <View style={detailStyles.sharedByRow}>
-                {buySharedBy.map(name => (
-                  <View
-                    key={name}
-                    style={[detailStyles.avatarSmall, { marginRight: 6 }]
-                    }
-                  >
-                    <Text style={detailStyles.avatarTextSmall}>
-                      {name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                ))}
+                {buySharedBy.map(name => {
+                  return (
+                    <View
+                      key={name}
+                      style={[detailStyles.avatarSmall, { marginRight: 6 }]
+                      }
+                    >
+                      <Text style={detailStyles.avatarTextSmall}>
+                        {name?.charAt(0).toUpperCase() || '?'}
+                      </Text>
+                    </View>
+                  );
+                })}
 
                 <TouchableOpacity
                   style={detailStyles.shareEditButton}
@@ -1893,6 +1887,7 @@ export default function EventDetailScreen({ route, navigation }) {
                   {participants.map(person => {
                     const spending = getSpendingPerPerson();
                     const amount = spending[person] || 0;
+                    
                     return (
                       <View
                         key={person}
@@ -1900,7 +1895,7 @@ export default function EventDetailScreen({ route, navigation }) {
                       >
                         <View style={detailStyles.avatarMedium}>
                           <Text style={detailStyles.avatarTextMedium}>
-                            {person.charAt(0).toUpperCase()}
+                            {person?.charAt(0).toUpperCase() || '?'}
                           </Text>
                         </View>
                         <Text style={detailStyles.detailedPersonName}>
