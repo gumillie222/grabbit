@@ -20,11 +20,7 @@ export const EventProvider = ({ children }) => {
   const [archivedEvents, setArchivedEvents] = useState([]);
 
   // ---- SHARED FRIENDS LIST (used by Profile + AddEventModal) ----
-  const [friends, setFriends] = useState([
-    { id: 1, name: 'Amy',  phone: '555-111-2222', email: 'amy@example.com' },
-    { id: 2, name: 'Ben',  phone: '555-333-4444', email: 'ben@example.com' },
-    { id: 3, name: 'Chris', phone: '555-555-6666', email: 'chris@example.com' },
-  ]);
+  const [friends, setFriends] = useState([]);
   // Profile info
   const [profile, setProfile] = useState({
     name: 'Grab Bit',
@@ -42,18 +38,38 @@ export const EventProvider = ({ children }) => {
     const loadFriendsFromBackend = async () => {
       try {
         console.log('[EventContext] Loading friends from backend for user:', currentUser.id);
-        const response = await api.getFriends(currentUser.id);
-        const backendFriends = response.friends || [];
-        setFriends(backendFriends);
-        console.log('[EventContext] Loaded', backendFriends.length, 'friends');
+        
+        // Hardcode friends based on user name
+        const userName = currentUser.name?.toLowerCase();
+        let hardcodedFriends = [];
+        
+        if (userName === 'bob') {
+          // Bob has only Alice as a friend
+          hardcodedFriends = [
+            { id: 'alice', name: 'Alice', phone: '555-111-2222', email: 'alice@example.com' },
+          ];
+        } else if (userName === 'alice') {
+          // Alice has only Bob as a friend
+          hardcodedFriends = [
+            { id: 'bob', name: 'Bob', phone: '555-333-4444', email: 'bob@example.com' },
+          ];
+        } else {
+          // For other users, try to load from backend
+          const response = await api.getFriends(currentUser.id);
+          hardcodedFriends = response.friends || [];
+        }
+        
+        setFriends(hardcodedFriends);
+        console.log('[EventContext] Loaded', hardcodedFriends.length, 'friends');
       } catch (err) {
         console.error('[EventContext] Failed to load friends from backend:', err);
-        // Keep default friends on error
+        // Set empty friends on error
+        setFriends([]);
       }
     };
 
     loadFriendsFromBackend();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.name]);
 
   // Function to reload events from backend (exposed for manual refresh)
   const reloadEvents = React.useCallback(async () => {
@@ -94,9 +110,15 @@ export const EventProvider = ({ children }) => {
   // Load events from backend when user is available
   useEffect(() => {
     if (!currentUser?.id) return;
-    reloadEvents().finally(() => {
+    
+    // Small delay to ensure backend registration and event updates complete
+    const loadEvents = async () => {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await reloadEvents();
       hasHydrated.current = true;
-    });
+    };
+    
+    loadEvents();
   }, [currentUser?.id, reloadEvents]);
 
   // Set up socket connection for real-time updates
@@ -119,8 +141,27 @@ export const EventProvider = ({ children }) => {
       const reloadFriends = async () => {
         if (!currentUser?.id) return;
         try {
-          const response = await api.getFriends(currentUser.id);
-          setFriends(response.friends || []);
+          // Hardcode friends based on user name
+          const userName = currentUser.name?.toLowerCase();
+          let hardcodedFriends = [];
+          
+          if (userName === 'bob') {
+            // Bob has only Alice as a friend
+            hardcodedFriends = [
+              { id: 'alice', name: 'Alice', phone: '555-111-2222', email: 'alice@example.com' },
+            ];
+          } else if (userName === 'alice') {
+            // Alice has only Bob as a friend
+            hardcodedFriends = [
+              { id: 'bob', name: 'Bob', phone: '555-333-4444', email: 'bob@example.com' },
+            ];
+          } else {
+            // For other users, try to load from backend
+            const response = await api.getFriends(currentUser.id);
+            hardcodedFriends = response.friends || [];
+          }
+          
+          setFriends(hardcodedFriends);
           console.log('[EventContext] Reloaded friends after friend:accepted');
         } catch (err) {
           console.error('[EventContext] Failed to reload friends:', err);

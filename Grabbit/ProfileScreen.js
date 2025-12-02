@@ -22,7 +22,7 @@ import { SERVER_URL } from './config';
 
 export default function ProfileScreen({ navigation }) {
   const { archivedEvents, unarchiveEvent, friends, setFriends } = useContext(EventContext);
-  const { currentUser, logout, updateUser } = useAuth();
+  const { currentUser, switchAccount, updateUser } = useAuth();
   const socketRef = useRef(null);
   
   const [profile, setProfile] = useState({
@@ -115,10 +115,31 @@ export default function ProfileScreen({ navigation }) {
     if (!currentUser?.id) return;
     try {
       setLoadingFriends(true);
-      const response = await api.getFriends(currentUser.id);
-      setFriends(response.friends || []);
+      
+      // Hardcode friends based on user name
+      const userName = currentUser.name?.toLowerCase();
+      let hardcodedFriends = [];
+      
+      if (userName === 'bob') {
+        // Bob has only Alice as a friend
+        hardcodedFriends = [
+          { id: 'alice', name: 'Alice', phone: '555-111-2222', email: 'alice@example.com' },
+        ];
+      } else if (userName === 'alice') {
+        // Alice has only Bob as a friend
+        hardcodedFriends = [
+          { id: 'bob', name: 'Bob', phone: '555-333-4444', email: 'bob@example.com' },
+        ];
+      } else {
+        // For other users, try to load from backend
+        const response = await api.getFriends(currentUser.id);
+        hardcodedFriends = response.friends || [];
+      }
+      
+      setFriends(hardcodedFriends);
     } catch (error) {
       console.error('Error loading friends:', error);
+      setFriends([]);
     } finally {
       setLoadingFriends(false);
     }
@@ -405,8 +426,11 @@ export default function ProfileScreen({ navigation }) {
           <View style={profileStyles.settingsContainer}>
             <View style={profileStyles.settingsHeader}>
               <Text style={profileStyles.settingsTitle}>About Grabbit</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
-                <FontAwesome5 name="times" size={16} color="#fff" />
+              <TouchableOpacity 
+                onPress={() => setSettingsVisible(false)}
+                style={{ marginRight: -8, marginTop: -8 }}
+              >
+                <FontAwesome5 name="times" size={18} color="#e55347" />
               </TouchableOpacity>
             </View>
 
@@ -420,18 +444,23 @@ export default function ProfileScreen({ navigation }) {
               <Text style={profileStyles.settingsBullet}>• Create an event on Home.</Text>
               <Text style={profileStyles.settingsBullet}>• Add friends, then add items to the list.</Text>
               <Text style={profileStyles.settingsBullet}>• Check items when bought and enter prices.</Text>
-              <Text style={profileStyles.settingsBullet}>• Use “The Split” tab to see who owes what.</Text>
+              <Text style={profileStyles.settingsBullet}>• Use "The Split" tab to see who owes what.</Text>
             </View>
 
-            <TouchableOpacity
-              style={[profileStyles.friendModalPrimaryButton, { alignSelf: 'flex-start', marginTop: 8 }]}
-              onPress={logout}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <FontAwesome5 name="sign-out-alt" size={14} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={profileStyles.friendModalPrimaryText}>Log out</Text>
-              </View>
-            </TouchableOpacity>
+            <View style={{ alignItems: 'center', marginTop: 8, width: '100%' }}>
+              <TouchableOpacity
+                style={[profileStyles.friendModalPrimaryButton, { alignSelf: 'center' }]}
+                onPress={async () => {
+                  await switchAccount();
+                  setSettingsVisible(false);
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <FontAwesome5 name="exchange-alt" size={14} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={profileStyles.friendModalPrimaryText}>Switch Account</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
 
             <Text style={profileStyles.settingsFooter}>Version 1.0 · Demo build</Text>
           </View>

@@ -56,14 +56,7 @@ export default function AddEventModal({
   const [tempSelectedFriends, setTempSelectedFriends] = useState([]); // only friend names (no "Me")
 
   // optional fallback if no friends are configured yet
-  const fallbackFriends = [
-    { id: 'f1', name: 'Alice' },
-    { id: 'f2', name: 'Bob' },
-    { id: 'f3', name: 'Charlie' },
-    { id: 'f4', name: 'Diana' },
-    { id: 'f5', name: 'Eve' },
-    { id: 'f6', name: 'Frank' },
-  ];
+  const fallbackFriends = [];
 
   // final list to display in the friend picker
   const effectiveFriends =

@@ -20,7 +20,6 @@ import HomeStackNavigator from './HomeStackNavigator';
 import ProfileScreen from './ProfileScreen';
 import { EventProvider } from './EventContext';
 import { AuthProvider, useAuth } from './AuthContext';
-import LoginScreen from './LoginScreen';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -69,7 +68,7 @@ export default function App() {
 }
 
 function AppNavigator() {
-  const { isAuthed, authLoading } = useAuth();
+  const { authLoading } = useAuth();
 
   if (authLoading) {
     return (
@@ -77,10 +76,6 @@ function AppNavigator() {
         <ActivityIndicator size="large" color="#e55347" />
       </View>
     );
-  }
-
-  if (!isAuthed) {
-    return <LoginScreen />;
   }
 
   return (
