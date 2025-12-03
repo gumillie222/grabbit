@@ -193,7 +193,30 @@ export default function EventDetailScreen({ route, navigation }) {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('[EventDetailScreen] Socket connected for event:', eventId);
+      console.log('[EventDetailScreen] Socket connected for event:', eventId, 'userId:', currentUser?.id);
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('[EventDetailScreen] Socket disconnected for event:', eventId);
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('[EventDetailScreen] Socket connection error:', error);
+    });
+
+    // Listen for deletion of this event
+    socket.on('event:delete', (payload) => {
+      const { eventId: deletedEventId, fromUserId } = payload;
+      
+      // Only process deletions for this event
+      if (deletedEventId !== eventId) return;
+      
+      console.log('[EventDetailScreen] Event was deleted by another user, redirecting to home');
+      Alert.alert(
+        'Event Deleted',
+        'This event has been deleted.',
+        [{ text: 'OK', onPress: () => navigation.navigate('HomeList') }]
+      );
     });
 
     // Listen for updates to this specific event
@@ -214,32 +237,44 @@ export default function EventDetailScreen({ route, navigation }) {
       lastUpdateTimestampRef.current = serverTs || Date.now();
 
       console.log('[EventDetailScreen] Received real-time update for event:', eventId);
+      console.log('[EventDetailScreen] Update from user:', fromUserId, 'items count:', eventData.items?.length || 0);
+      
+      // Log claimed items for debugging
+      if (eventData.items && Array.isArray(eventData.items)) {
+        const claimedItems = eventData.items.filter(item => item.claimedBy);
+        if (claimedItems.length > 0) {
+          console.log('[EventDetailScreen] Received items with claims:', claimedItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            claimedBy: item.claimedBy
+          })));
+        }
+      }
 
-      // Debounce items update with a small delay to prevent flickering
+      // Update items immediately (remove debounce for real-time feel)
       if (eventData.items && Array.isArray(eventData.items)) {
         // Clear any pending update
         if (itemsUpdateTimeoutRef.current) {
           clearTimeout(itemsUpdateTimeoutRef.current);
         }
         
-        // Update after a short delay
-        itemsUpdateTimeoutRef.current = setTimeout(() => {
-          setItems(prevItems => {
-            const prevStr = JSON.stringify(prevItems);
-            const newStr = JSON.stringify(eventData.items);
-            if (prevStr !== newStr) {
-              console.log('[EventDetailScreen] Updated items from real-time sync');
-              // Set flag to prevent persist effect from running
-              isApplyingRemoteUpdateRef.current = true;
-              // Clear flag after a delay to allow next update
-              setTimeout(() => {
-                isApplyingRemoteUpdateRef.current = false;
-              }, 500);
-              return eventData.items;
-            }
-            return prevItems;
-          });
-        }, 300); // 300ms delay to batch rapid updates
+        // Update immediately for real-time updates
+        setItems(prevItems => {
+          const prevStr = JSON.stringify(prevItems);
+          const newStr = JSON.stringify(eventData.items);
+          if (prevStr !== newStr) {
+            console.log('[EventDetailScreen] Updated items from real-time sync');
+            // Set flag to prevent persist effect from running
+            isApplyingRemoteUpdateRef.current = true;
+            // Clear flag after a delay to allow next update
+            setTimeout(() => {
+              isApplyingRemoteUpdateRef.current = false;
+            }, 500);
+            return eventData.items;
+          }
+          console.log('[EventDetailScreen] Items unchanged, skipping update');
+          return prevItems;
+        });
       }
 
       // Debounce participants update with a small delay
@@ -800,15 +835,28 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const openParticipantsModal = () => {
     if (isReadOnly) return showArchivedAlert();
-    const currentFriends = participants.filter(id => id !== currentUser?.id);
-    setTempParticipants(currentFriends);
+    // Normalize IDs to lowercase and filter out current user
+    const currentUserLower = currentUser?.id?.toLowerCase();
+    const currentFriends = participants
+      .map(id => id?.toLowerCase())
+      .filter(id => id && id !== currentUserLower);
+    // Deduplicate
+    setTempParticipants([...new Set(currentFriends)]);
     setParticipantsModalVisible(true);
   };
 
   const toggleTempParticipant = id => {
-    setTempParticipants(prev =>
-      prev.includes(id) ? prev.filter(n => n !== id) : [...prev, id]
-    );
+    const normalizedId = id?.toLowerCase();
+    setTempParticipants(prev => {
+      const normalizedPrev = prev.map(p => p?.toLowerCase());
+      if (normalizedPrev.includes(normalizedId)) {
+        // Remove (case-insensitive)
+        return prev.filter(p => p?.toLowerCase() !== normalizedId);
+      } else {
+        // Add (normalized ID to avoid duplicates)
+        return [...prev, normalizedId];
+      }
+    });
   };
 
   const cancelParticipantsSelection = () => {
@@ -818,11 +866,18 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const confirmParticipantsSelection = async () => {
     // New participant list: current user + whatever was selected (all IDs)
-    const newParticipants = [currentUser?.id, ...tempParticipants].filter(Boolean);
+    // Deduplicate to prevent adding the same participant twice
+    const allParticipants = [currentUser?.id, ...tempParticipants].filter(Boolean);
+    const newParticipants = [...new Set(allParticipants.map(id => id.toLowerCase()))];
     
-    // Check if any participants are being removed
+    // Check if any participants are being removed (case-insensitive comparison)
+    const currentUserLower = currentUser?.id?.toLowerCase();
+    const newParticipantsLower = newParticipants.map(p => p?.toLowerCase());
     const removedParticipants = participants.filter(
-      p => p !== currentUser?.id && !newParticipants.includes(p)
+      p => {
+        const pLower = p?.toLowerCase();
+        return pLower !== currentUserLower && !newParticipantsLower.includes(pLower);
+      }
     );
     
     // If someone is being removed, show confirmation dialog
@@ -1127,10 +1182,12 @@ export default function EventDetailScreen({ route, navigation }) {
                 isReadOnly ? showArchivedAlert() : toggleItemClaim(item.id)
               }
             >
-              {item.claimedBy === currentUser?.id ? (
+              {item.claimedBy ? (
                 <View style={detailStyles.avatarSmallSelected}>
                   <Text style={detailStyles.avatarTextSmall}>
-                    {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
+                    {item.claimedBy === currentUser?.id 
+                      ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
+                      : (getUserNameFromId(item.claimedBy)?.charAt(0).toUpperCase() || item.claimedBy?.charAt(0).toUpperCase() || '?')}
                   </Text>
                 </View>
               ) : (
@@ -1156,10 +1213,12 @@ export default function EventDetailScreen({ route, navigation }) {
         )}
 
         {/* buyer badge on recent list */}
-        {!isActiveList && item.claimedBy === currentUser?.id && (
+        {!isActiveList && item.claimedBy && (
           <View style={detailStyles.avatarSmall}>
             <Text style={detailStyles.avatarTextSmall}>
-              {currentUser?.name?.charAt(0).toUpperCase() || 'M'}
+              {item.claimedBy === currentUser?.id 
+                ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
+                : (getUserNameFromId(item.claimedBy)?.charAt(0).toUpperCase() || item.claimedBy?.charAt(0).toUpperCase() || '?')}
             </Text>
           </View>
         )}
@@ -1403,8 +1462,8 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   };
 
-  // effective friends for participants picker - always use backend friends
-  // Filter to only include friends that are in the current participants list
+  // effective friends for participants picker - show ALL friends (like AddEventModal)
+  // This allows adding new participants to existing events
   const effectiveFriends = useMemo(() => {
     if (!contextFriends || contextFriends.length === 0) {
       // If no friends from backend, return empty array (shouldn't happen if backend is working)
@@ -1412,13 +1471,9 @@ export default function EventDetailScreen({ route, navigation }) {
       return [];
     }
     
-    // Filter friends to only include those who are current participants (by ID)
-    // This ensures the picker only shows relevant friends
-    const participantIds = participants.filter(p => p !== currentUser?.id);
-    return contextFriends.filter(friend => 
-      participantIds.includes(friend.id)
-    );
-  }, [contextFriends, participants, currentUser?.id]);
+    // Return all friends, not just current participants (allows adding new participants)
+    return contextFriends;
+  }, [contextFriends]);
 
   // ---- RENDER ----
   return (
@@ -1774,8 +1829,8 @@ export default function EventDetailScreen({ route, navigation }) {
                   contentContainerStyle={{ paddingBottom: 10 }}
                 >
                   {effectiveFriends.map(friend => {
-                    const friendId = friend.id;
-                    const isSelected = tempParticipants.includes(friendId);
+                    const friendId = friend.id?.toLowerCase();
+                    const isSelected = tempParticipants.some(p => p?.toLowerCase() === friendId);
                     return (
                       <TouchableOpacity
                         key={friendId}
@@ -1783,7 +1838,7 @@ export default function EventDetailScreen({ route, navigation }) {
                           detailStyles.friendItem,
                           isSelected && detailStyles.friendItemSelected,
                         ]}
-                        onPress={() => toggleTempParticipant(friendId)}
+                        onPress={() => toggleTempParticipant(friend.id)}
                       >
                         <View
                           style={[

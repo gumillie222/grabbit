@@ -12,6 +12,8 @@ export const EventProvider = ({ children }) => {
   const STORAGE_KEY = 'grabbit:data:v1';
   const { currentUser } = useAuth();
   const socketRef = useRef(null);
+  const eventsRef = useRef([]);
+  const archivedEventsRef = useRef([]);
 
   // Active events (home)
   const [events, setEvents] = useState([]);
@@ -81,24 +83,40 @@ export const EventProvider = ({ children }) => {
       const backendEvents = response.events || [];
       
       // Convert backend events to app format - keep actual user names/IDs
-      const formattedEvents = backendEvents.map(e => {
-        return {
+      // Separate archived and active events
+      const activeEvents = [];
+      const archivedEventsList = [];
+      
+      backendEvents.forEach(e => {
+        const formattedEvent = {
           id: e.id,
           title: e.title,
           items: e.items || [],
           participants: e.participants || [],
           isNew: false,
-          archived: false,
+          archived: e.archived === true, // Preserve archived status from backend
         };
+        
+        if (formattedEvent.archived) {
+          archivedEventsList.push(formattedEvent);
+        } else {
+          activeEvents.push(formattedEvent);
+        }
       });
       
-      setEvents(formattedEvents);
-      console.log('[EventContext] Reloaded', formattedEvents.length, 'events');
-      return formattedEvents;
+      setEvents(activeEvents);
+      setArchivedEvents(archivedEventsList);
+      // Keep refs in sync
+      eventsRef.current = activeEvents;
+      archivedEventsRef.current = archivedEventsList;
+      console.log('[EventContext] Reloaded', activeEvents.length, 'active events and', archivedEventsList.length, 'archived events');
+      return [...activeEvents, ...archivedEventsList];
     } catch (err) {
       console.error('[EventContext] Failed to reload events from backend:', err);
       console.error('[EventContext] Error details:', err.message);
       setEvents([]);
+      eventsRef.current = [];
+      archivedEventsRef.current = [];
       return [];
     }
   }, [currentUser?.id, currentUser?.name]);
@@ -180,6 +198,27 @@ export const EventProvider = ({ children }) => {
       reloadEvents();
     });
 
+    socket.on('event:delete', (payload) => {
+      console.log('[EventContext] Received event delete:', payload);
+      const { eventId, fromUserId } = payload;
+      
+      if (fromUserId === currentUser.id) {
+        return; // Ignore our own deletions
+      }
+
+      // Remove event from both lists
+      setEvents(prev => {
+        const updated = prev.filter(e => e.id !== eventId);
+        eventsRef.current = updated;
+        return updated;
+      });
+      setArchivedEvents(prev => {
+        const updated = prev.filter(e => e.id !== eventId);
+        archivedEventsRef.current = updated;
+        return updated;
+      });
+    });
+
     socket.on('event:update', (payload) => {
       console.log('[EventContext] Received event update:', payload);
       const { eventId, eventData, fromUserId } = payload;
@@ -188,34 +227,71 @@ export const EventProvider = ({ children }) => {
         return; // Ignore our own updates
       }
 
-      // Update the event in our local state - keep actual user names/IDs
-      setEvents(prev => {
-        const existingIndex = prev.findIndex(e => e.id === eventId);
-        if (existingIndex >= 0) {
-          // Update existing event
-          const updated = [...prev];
-          const eventDataParticipants = eventData.participants 
-            ? eventData.participants
-            : updated[existingIndex].participants;
-          updated[existingIndex] = {
-            ...updated[existingIndex],
-            ...eventData,
-            items: eventData.items || updated[existingIndex].items,
-            participants: eventDataParticipants,
-          };
-          return updated;
-        } else {
-          // Add new event
-          return [{
-            id: eventId,
-            title: eventData.title,
-            items: eventData.items || [],
-            participants: eventData.participants || [],
-            isNew: false,
-            archived: false,
-          }, ...prev];
+      // Use refs to get current state without nested setState
+      const currentEvents = eventsRef.current;
+      const currentArchived = archivedEventsRef.current;
+      
+      const eventInEvents = currentEvents.find(e => e.id === eventId);
+      const eventInArchived = currentArchived.find(e => e.id === eventId);
+      const existingEvent = eventInEvents || eventInArchived;
+      
+      const isNowArchived = eventData.archived === true;
+      const wasArchived = existingEvent?.archived === true;
+      
+      // Build updated event
+      const updatedEvent = existingEvent ? {
+        ...existingEvent,
+        ...eventData,
+        items: eventData.items || existingEvent.items,
+        participants: eventData.participants || existingEvent.participants,
+        archived: eventData.archived !== undefined ? eventData.archived : existingEvent.archived,
+      } : {
+        id: eventId,
+        title: eventData.title || 'Untitled',
+        items: eventData.items || [],
+        participants: eventData.participants || [],
+        archived: isNowArchived,
+        isNew: false,
+        ...eventData,
+      };
+      
+      // Update both lists synchronously
+      let newEvents = [...currentEvents];
+      let newArchived = [...currentArchived];
+      
+      if (isNowArchived) {
+        // Should be archived
+        if (eventInEvents) {
+          // Remove from events
+          newEvents = newEvents.filter(e => e.id !== eventId);
         }
-      });
+        // Add/update in archived
+        const archIndex = newArchived.findIndex(e => e.id === eventId);
+        if (archIndex >= 0) {
+          newArchived[archIndex] = updatedEvent;
+        } else {
+          newArchived = [updatedEvent, ...newArchived];
+        }
+      } else {
+        // Should not be archived
+        if (eventInArchived) {
+          // Remove from archived
+          newArchived = newArchived.filter(e => e.id !== eventId);
+        }
+        // Add/update in events
+        const eventsIndex = newEvents.findIndex(e => e.id === eventId);
+        if (eventsIndex >= 0) {
+          newEvents[eventsIndex] = updatedEvent;
+        } else {
+          newEvents = [updatedEvent, ...newEvents];
+        }
+      }
+      
+      // Update state and refs synchronously
+      eventsRef.current = newEvents;
+      archivedEventsRef.current = newArchived;
+      setEvents(newEvents);
+      setArchivedEvents(newArchived);
     });
 
     return () => {
@@ -276,7 +352,11 @@ export const EventProvider = ({ children }) => {
       archived: false,
     };
 
-    setEvents(currentEvents => [eventToAdd, ...currentEvents]);
+    setEvents(currentEvents => {
+      const updated = [eventToAdd, ...currentEvents];
+      eventsRef.current = updated;
+      return updated;
+    });
 
     // Sync with backend
     if (currentUser?.id) {
@@ -314,8 +394,16 @@ export const EventProvider = ({ children }) => {
     const updater = list =>
       list.map(e => (e.id === eventId ? { ...e, items: updatedItems } : e));
 
-    setEvents(prev => updater(prev));
-    setArchivedEvents(prev => updater(prev));
+    setEvents(prev => {
+      const updated = updater(prev);
+      eventsRef.current = updated;
+      return updated;
+    });
+    setArchivedEvents(prev => {
+      const updated = updater(prev);
+      archivedEventsRef.current = updated;
+      return updated;
+    });
 
     // Sync with backend
     if (currentUser?.id) {
@@ -332,24 +420,29 @@ export const EventProvider = ({ children }) => {
             })));
           }
           
-          await api.saveEvent(currentUser.id, eventId, {
-            ...event,
-            items: updatedItems,
-            participants: event.participants || [],
-          });
-          
-          // Send real-time update via socket
+          // Send real-time update via socket FIRST for immediate updates
           // Don't send sharedWith - let server compute it from participants
-          if (socketRef.current) {
+          if (socketRef.current && socketRef.current.connected) {
             const { sharedWith, ...eventWithoutSharedWith } = event;
-            socketRef.current.emit('event:update', {
+            const payload = {
               eventId,
               eventData: {
                 ...eventWithoutSharedWith,
                 items: updatedItems,
                 participants: event.participants || [],
               },
-            });
+            };
+            console.log(`[EventContext] Emitting event:update IMMEDIATELY for event ${eventId} with ${updatedItems.length} items`);
+            // Log claimed items for debugging
+            const claimedItems = updatedItems.filter(item => item.claimedBy);
+            if (claimedItems.length > 0) {
+              console.log(`[EventContext] Items with claims:`, claimedItems.map(item => ({
+                id: item.id,
+                name: item.name,
+                claimedBy: item.claimedBy
+              })));
+            }
+            socketRef.current.emit('event:update', payload);
             console.log(`[EventContext] Sent event:update for event ${eventId} with ${updatedItems.length} items, participants: ${(event.participants || []).join(', ')}`);
             if (itemsWithSharedBy.length > 0) {
               console.log(`[EventContext] Socket update includes items with sharedBy:`, itemsWithSharedBy.map(item => ({
@@ -358,7 +451,19 @@ export const EventProvider = ({ children }) => {
                 sharedBy: item.sharedBy
               })));
             }
+          } else {
+            console.warn(`[EventContext] Socket not connected, cannot send real-time update. Socket exists: ${!!socketRef.current}, Connected: ${socketRef.current?.connected}`);
           }
+          
+          // Persist to backend via REST API (in background, don't block)
+          api.saveEvent(currentUser.id, eventId, {
+            ...event,
+            items: updatedItems,
+            participants: event.participants || [],
+          }).catch(err => {
+            console.error('[EventContext] Failed to persist event to backend:', err);
+            // Don't throw - socket update already sent, this is just persistence
+          });
         }
       } catch (err) {
         console.error('[EventContext] Failed to sync items update:', err);
@@ -376,8 +481,16 @@ export const EventProvider = ({ children }) => {
     const previousEvents = [...events];
     const previousArchivedEvents = [...archivedEvents];
 
-    setEvents(prev => updater(prev));
-    setArchivedEvents(prev => updater(prev));
+    setEvents(prev => {
+      const updated = updater(prev);
+      eventsRef.current = updated;
+      return updated;
+    });
+    setArchivedEvents(prev => {
+      const updated = updater(prev);
+      archivedEventsRef.current = updated;
+      return updated;
+    });
 
     // Sync with backend
     if (currentUser?.id) {
@@ -417,33 +530,129 @@ export const EventProvider = ({ children }) => {
     }
   };
 
-  const deleteEvent = (id) => {
-    setEvents(prev => prev.filter(e => e.id !== id));
-    setArchivedEvents(prev => prev.filter(e => e.id !== id));
-  };
-
-  const archiveEvent = (id) => {
+  const deleteEvent = async (id) => {
+    // Update local state immediately
     setEvents(prev => {
-      const target = prev.find(e => e.id === id);
-      if (!target) return prev;
-
-      const archivedCopy = { ...target, archived: true };
-
-      setArchivedEvents(archPrev => [archivedCopy, ...archPrev]);
-      return prev.filter(e => e.id !== id);
+      const updated = prev.filter(e => e.id !== id);
+      eventsRef.current = updated;
+      return updated;
     });
+    setArchivedEvents(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      archivedEventsRef.current = updated;
+      return updated;
+    });
+
+    // Sync with backend and broadcast to all participants
+    if (currentUser?.id) {
+      try {
+        await api.deleteEvent(currentUser.id, id);
+
+        // Send real-time deletion via socket
+        if (socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit('event:delete', {
+            eventId: id,
+          });
+          console.log(`[EventContext] Sent event:delete for event ${id}`);
+        }
+      } catch (err) {
+        console.error('[EventContext] Failed to delete event:', err);
+        // Optionally reload events to restore state on error
+        reloadEvents();
+      }
+    }
   };
 
-  const unarchiveEvent = (id) => {
-    setArchivedEvents(prev => {
-      const target = prev.find(e => e.id === id);
-      if (!target) return prev;
+  const archiveEvent = async (id) => {
+    const target = events.find(e => e.id === id) || archivedEvents.find(e => e.id === id);
+    if (!target) return;
 
-      const activeCopy = { ...target, archived: false };
+    const archivedCopy = { ...target, archived: true };
 
-      setEvents(eventsPrev => [activeCopy, ...eventsPrev]);
-      return prev.filter(e => e.id !== id);
+    // Update local state
+    setEvents(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      eventsRef.current = updated;
+      return updated;
     });
+    setArchivedEvents(archPrev => {
+      const updated = [archivedCopy, ...archPrev];
+      archivedEventsRef.current = updated;
+      return updated;
+    });
+
+    // Sync with backend and broadcast to all participants
+    if (currentUser?.id) {
+      try {
+        await api.saveEvent(currentUser.id, id, {
+          ...target,
+          archived: true,
+          participants: target.participants || [],
+        });
+
+        // Send real-time update via socket
+        if (socketRef.current && socketRef.current.connected) {
+          const { sharedWith, ...eventWithoutSharedWith } = target;
+          socketRef.current.emit('event:update', {
+            eventId: id,
+            eventData: {
+              ...eventWithoutSharedWith,
+              archived: true,
+              participants: target.participants || [],
+            },
+          });
+          console.log(`[EventContext] Sent archive event:update for event ${id}`);
+        }
+      } catch (err) {
+        console.error('[EventContext] Failed to archive event:', err);
+      }
+    }
+  };
+
+  const unarchiveEvent = async (id) => {
+    const target = archivedEvents.find(e => e.id === id) || events.find(e => e.id === id);
+    if (!target) return;
+
+    const activeCopy = { ...target, archived: false };
+
+    // Update local state
+    setArchivedEvents(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      archivedEventsRef.current = updated;
+      return updated;
+    });
+    setEvents(eventsPrev => {
+      const updated = [activeCopy, ...eventsPrev];
+      eventsRef.current = updated;
+      return updated;
+    });
+
+    // Sync with backend and broadcast to all participants
+    if (currentUser?.id) {
+      try {
+        await api.saveEvent(currentUser.id, id, {
+          ...target,
+          archived: false,
+          participants: target.participants || [],
+        });
+
+        // Send real-time update via socket
+        if (socketRef.current && socketRef.current.connected) {
+          const { sharedWith, ...eventWithoutSharedWith } = target;
+          socketRef.current.emit('event:update', {
+            eventId: id,
+            eventData: {
+              ...eventWithoutSharedWith,
+              archived: false,
+              participants: target.participants || [],
+            },
+          });
+          console.log(`[EventContext] Sent unarchive event:update for event ${id}`);
+        }
+      } catch (err) {
+        console.error('[EventContext] Failed to unarchive event:', err);
+      }
+    }
   };
 
   // Helper so screens can look up an event from either list

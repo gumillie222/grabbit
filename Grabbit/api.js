@@ -79,5 +79,19 @@ export const api = {
     if (!response.ok) throw new Error('Failed to save event');
     return response.json();
   },
+
+  deleteEvent: async (userId, eventId) => {
+    // Use query parameter for DELETE request (more reliable than body)
+    const response = await fetch(`${SERVER_URL}/api/events/${eventId}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[API] deleteEvent failed: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`Failed to delete event: ${response.status} ${response.statusText}`);
+    }
+    return response.json();
+  },
 };
 
