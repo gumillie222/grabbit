@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -131,6 +132,31 @@ export default function EventDetailScreen({ route, navigation }) {
     }
     // Fallback: return the ID
     return userId;
+  };
+
+  // Helper to normalize user identifier for comparison (handles both IDs and names)
+  const normalizeUserId = (userId) => {
+    if (!userId) return null;
+    // Convert to lowercase for case-insensitive comparison
+    const normalized = userId.toLowerCase();
+    // Check if it matches a friend's ID or name
+    const friend = contextFriends.find(f => 
+      f.id?.toLowerCase() === normalized || f.name?.toLowerCase() === normalized
+    );
+    if (friend) return friend.id?.toLowerCase();
+    // Check if it matches current user
+    if (currentUser?.id?.toLowerCase() === normalized || currentUser?.name?.toLowerCase() === normalized) {
+      return currentUser?.id?.toLowerCase();
+    }
+    // Return normalized version
+    return normalized;
+  };
+
+  // Helper to check if a user ID/name is in participants (case-insensitive)
+  const isParticipant = (userId) => {
+    if (!userId) return false;
+    const normalized = normalizeUserId(userId);
+    return participants.some(p => normalizeUserId(p) === normalized);
   };
 
   const [participantsModalVisible, setParticipantsModalVisible] =
@@ -418,11 +444,11 @@ export default function EventDetailScreen({ route, navigation }) {
     participants.forEach(p => (balances[p] = 0));
 
     // Filter bought items to only include those with valid buyers in participants
-    // Use currentUser?.id instead of name since participants contains IDs
+    // Use case-insensitive comparison to handle both IDs and names
     const bought = items.filter(item => {
       if (!item.bought || !item.price || parseFloat(item.price) <= 0) return false;
       const buyer = item.claimedBy || currentUser?.id;
-      return buyer && participants.includes(buyer);
+      return buyer && isParticipant(buyer);
     });
     
     // Calculate total spent only from items with valid participants
@@ -436,25 +462,30 @@ export default function EventDetailScreen({ route, navigation }) {
       const buyer = item.claimedBy || currentUser?.id;
       
       // Skip items where the buyer is not in the current participants list
-      if (!buyer || !participants.includes(buyer)) {
+      if (!buyer || !isParticipant(buyer)) {
         console.log(`[Split] Skipping item "${item.name}" - buyer "${buyer}" is not in participants`);
         return;
       }
       
-      // Get sharers, filtering to only include current participants
+      // Normalize buyer to participant ID format for balance tracking
+      const normalizedBuyer = participants.find(p => normalizeUserId(p) === normalizeUserId(buyer)) || buyer;
+      
+      // Get sharers, filtering to only include current participants (case-insensitive)
       let rawSharers = [];
       if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
-        // Filter sharedBy to only include current participants (sharedBy should contain IDs)
-        rawSharers = item.sharedBy.filter(id => participants.includes(id));
+        // Filter sharedBy to only include current participants (handles both IDs and names)
+        rawSharers = item.sharedBy
+          .filter(id => isParticipant(id))
+          .map(id => participants.find(p => normalizeUserId(p) === normalizeUserId(id)) || id);
       }
       
       // If no valid sharers after filtering, default to buyer only
       if (rawSharers.length === 0) {
-        rawSharers = [buyer];
+        rawSharers = [normalizedBuyer];
       }
       
-      // Filter sharers to only include current participants
-      const sharers = rawSharers.filter(s => participants.includes(s));
+      // Filter sharers to only include current participants (should already be filtered, but double-check)
+      const sharers = rawSharers.filter(s => isParticipant(s));
       
       // Skip if no valid sharers remain
       if (sharers.length === 0) {
@@ -464,22 +495,25 @@ export default function EventDetailScreen({ route, navigation }) {
       
       const perPerson = price / sharers.length;
 
-      // Ensure buyer and all sharers have balance entries
-      if (!balances[buyer]) balances[buyer] = 0;
+      // Ensure buyer and all sharers have balance entries (use normalized IDs)
+      if (!balances[normalizedBuyer]) balances[normalizedBuyer] = 0;
       
       // First, credit the buyer for the full amount they paid
-      balances[buyer] += price;
+      balances[normalizedBuyer] += price;
       
       // Then, debit each sharer (including the buyer if they're sharing) for their share
       sharers.forEach(person => {
         // Skip if person is not in participants (shouldn't happen after filtering, but safety check)
-        if (!participants.includes(person)) {
+        if (!isParticipant(person)) {
           console.log(`[Split] Skipping sharer "${person}" - not in participants`);
           return;
         }
         
-        if (!balances[person]) balances[person] = 0;
-        balances[person] -= perPerson; // they owe their share
+        // Normalize person to participant ID format
+        const normalizedPerson = participants.find(p => normalizeUserId(p) === normalizeUserId(person)) || person;
+        
+        if (!balances[normalizedPerson]) balances[normalizedPerson] = 0;
+        balances[normalizedPerson] -= perPerson; // they owe their share
       });
     });
 
@@ -524,7 +558,7 @@ export default function EventDetailScreen({ route, navigation }) {
     console.log('[Split] Final balances:', balances);
 
     return { balances, transactions, totalSpent: totalSpent.toFixed(2) };
-  }, [items, participants, currentUser?.id]);
+  }, [items, participants, currentUser?.id, contextFriends]);
 
   const closeAiModal = () => {
     setAiModalVisible(false);
@@ -1538,9 +1572,13 @@ export default function EventDetailScreen({ route, navigation }) {
         }}
       />
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* header */}
-        <View style={detailStyles.headerRow}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          contentContainerStyle={{ paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* header */}
+          <View style={detailStyles.headerRow}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={detailStyles.headerSide}
@@ -1617,7 +1655,8 @@ export default function EventDetailScreen({ route, navigation }) {
         <View style={detailStyles.divider} />
 
         {activeTab === 'List' ? renderListTab() : renderSplitTab()}
-      </ScrollView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
 
       {/* BUY MODAL */}
       <Modal

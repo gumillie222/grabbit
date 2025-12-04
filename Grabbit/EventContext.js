@@ -602,35 +602,36 @@ export const EventProvider = ({ children }) => {
 
     // Sync with backend and broadcast to all participants
     if (currentUser?.id) {
-      // Send real-time update via socket IMMEDIATELY for instant cross-device sync
-      if (socketRef.current && socketRef.current.connected) {
-        const { sharedWith, ...eventWithoutSharedWith } = target;
-        socketRef.current.emit('event:update', {
-          eventId: id,
-          eventData: {
-            ...eventWithoutSharedWith,
-            title: target.title,
-            items: target.items || [],
-            archived: true,
-            participants: target.participants || [],
-          },
-        });
-        console.log(`[EventContext] Sent archive event:update for event ${id} (real-time broadcast)`);
-      } else {
-        console.warn(`[EventContext] Socket not connected, cannot send real-time archive update for event ${id}`);
-      }
-
-      // Persist to backend (in background, don't block)
+      // Persist to backend first, then broadcast only on success
       try {
         await api.saveEvent(currentUser.id, id, {
           ...target,
           archived: true,
           participants: target.participants || [],
         });
+        
+        // Only send socket broadcast after successful persistence
+        if (socketRef.current && socketRef.current.connected) {
+          const { sharedWith, ...eventWithoutSharedWith } = target;
+          socketRef.current.emit('event:update', {
+            eventId: id,
+            eventData: {
+              ...eventWithoutSharedWith,
+              title: target.title,
+              items: target.items || [],
+              archived: true,
+              participants: target.participants || [],
+            },
+          });
+          console.log(`[EventContext] Sent archive event:update for event ${id} (after successful persistence)`);
+        } else {
+          console.warn(`[EventContext] Socket not connected, cannot send real-time archive update for event ${id}`);
+        }
       } catch (err) {
         console.error('[EventContext] Failed to persist archive to backend:', err);
-        // Optionally reload events to restore state on error
+        // Reload events to restore state on error (rollback local state)
         reloadEvents();
+        // Don't send socket broadcast since persistence failed
       }
     }
   };
@@ -655,35 +656,36 @@ export const EventProvider = ({ children }) => {
 
     // Sync with backend and broadcast to all participants
     if (currentUser?.id) {
-      // Send real-time update via socket IMMEDIATELY for instant cross-device sync
-      if (socketRef.current && socketRef.current.connected) {
-        const { sharedWith, ...eventWithoutSharedWith } = target;
-        socketRef.current.emit('event:update', {
-          eventId: id,
-          eventData: {
-            ...eventWithoutSharedWith,
-            title: target.title,
-            items: target.items || [],
-            archived: false,
-            participants: target.participants || [],
-          },
-        });
-        console.log(`[EventContext] Sent unarchive event:update for event ${id} (real-time broadcast)`);
-      } else {
-        console.warn(`[EventContext] Socket not connected, cannot send real-time unarchive update for event ${id}`);
-      }
-
-      // Persist to backend (in background, don't block)
+      // Persist to backend first, then broadcast only on success
       try {
         await api.saveEvent(currentUser.id, id, {
           ...target,
           archived: false,
           participants: target.participants || [],
         });
+        
+        // Only send socket broadcast after successful persistence
+        if (socketRef.current && socketRef.current.connected) {
+          const { sharedWith, ...eventWithoutSharedWith } = target;
+          socketRef.current.emit('event:update', {
+            eventId: id,
+            eventData: {
+              ...eventWithoutSharedWith,
+              title: target.title,
+              items: target.items || [],
+              archived: false,
+              participants: target.participants || [],
+            },
+          });
+          console.log(`[EventContext] Sent unarchive event:update for event ${id} (after successful persistence)`);
+        } else {
+          console.warn(`[EventContext] Socket not connected, cannot send real-time unarchive update for event ${id}`);
+        }
       } catch (err) {
         console.error('[EventContext] Failed to persist unarchive to backend:', err);
-        // Optionally reload events to restore state on error
+        // Reload events to restore state on error (rollback local state)
         reloadEvents();
+        // Don't send socket broadcast since persistence failed
       }
     }
   };

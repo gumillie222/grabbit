@@ -8,6 +8,8 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -393,12 +395,15 @@ export default function ProfileScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {activeTab === 'friends' ? renderFriendsTab() : renderArchiveTab()}
-          </ScrollView>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {activeTab === 'friends' ? renderFriendsTab() : renderArchiveTab()}
+            </ScrollView>
+          </TouchableWithoutFeedback>
         </View>
       </View>
 

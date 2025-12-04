@@ -9,6 +9,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 
@@ -276,7 +277,8 @@ export default function AddEventModal({
       visible={visible}
       onRequestClose={onClose}
     >
-      <View style={homeStyles.modalOverlayContainer}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={homeStyles.modalOverlayContainer}>
         <View
           style={[
             globalStyles.modalOverlay,
@@ -445,7 +447,8 @@ export default function AddEventModal({
             )}
           </View>
         )}
-      </View>
+        </View>
+      </TouchableWithoutFeedback>
 
       {/* Friends Selection Modal */}
       <Modal
