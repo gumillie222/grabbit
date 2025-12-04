@@ -17,20 +17,10 @@ import { homeStyles } from './styles/homeStyles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
 import { useAuth } from './AuthContext';
 import { getUserColors, getUserInitial } from './userColors';
+import { SERVER_URL } from './config';
 
-// Determine the correct BASE_URL based on platform
-const getBaseUrl = () => {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:4000';
-  } else if (Platform.OS === 'ios') {
-    return __DEV__ ? 'http://localhost:4000' : 'http://10.102.227.218:4000';
-  } else if (Platform.OS === 'android') {
-    return __DEV__ ? 'http://10.0.2.2:4000' : 'http://10.102.227.218:4000';
-  }
-  return 'http://localhost:4000';
-};
-
-const BASE_URL = getBaseUrl();
+// Use SERVER_URL from config for consistency
+const BASE_URL = SERVER_URL;
 
 export default function AddEventModal({
   visible,

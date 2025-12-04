@@ -46,31 +46,40 @@ io.on("connection", (socket) => {
   
   console.log(`[Socket] New connection: userId=${userId}, socketId=${socket.id}`);
 
-  // Only allow alice and bob for demo
+  // Allow alice, bob, and dummy users (charlie, david, emma) for demo
   if (userId) {
-    // For demo, only allow 'alice' and 'bob' as userIds
-    if (userId !== 'alice' && userId !== 'bob') {
-      console.log(`[Socket] Rejected connection: userId=${userId} is not alice or bob`);
+    // For demo, allow 'alice', 'bob', and dummy users
+    const normalizedUserId = userId.toLowerCase();
+    const allowedUsers = ['alice', 'bob', 'charlie', 'david', 'emma'];
+    if (!allowedUsers.includes(normalizedUserId)) {
+      console.log(`[Socket] Rejected connection: userId=${userId} is not in allowed list`);
       socket.disconnect();
       return;
     }
     
     // Get or create user entry
-    let user = users.get(userId);
+    let user = users.get(normalizedUserId);
     if (!user) {
-      // Auto-register alice or bob if they don't exist yet
-      const userData = userId === 'alice' 
-        ? { id: 'alice', name: 'Alice', email: 'alice@example.com', phone: '555-111-2222' }
-        : { id: 'bob', name: 'Bob', email: 'bob@example.com', phone: '555-333-4444' };
-      
-      user = {
-        ...userData,
-        socketId: socket.id,
-        online: true,
-        lastSeen: Date.now(),
+      // Auto-register users if they don't exist yet
+      const userDataMap = {
+        'alice': { id: 'alice', name: 'Alice', email: 'alice@grabbit.com', phone: '555-111-2222' },
+        'bob': { id: 'bob', name: 'Bob', email: 'bob@grabbit.com', phone: '555-333-4444' },
+        'charlie': { id: 'charlie', name: 'Charlie', email: 'charlie@grabbit.com', phone: '555-444-5555' },
+        'david': { id: 'david', name: 'David', email: 'david@grabbit.com', phone: '555-666-7777' },
+        'emma': { id: 'emma', name: 'Emma', email: 'emma@grabbit.com', phone: '555-888-9999' },
       };
-      users.set(userId, user);
-      console.log(`[Socket] Auto-registered user: ${userId}`);
+      
+      const userData = userDataMap[normalizedUserId];
+      if (userData) {
+        user = {
+          ...userData,
+          socketId: socket.id,
+          online: true,
+          lastSeen: Date.now(),
+        };
+        users.set(normalizedUserId, user);
+        console.log(`[Socket] Auto-registered user: ${normalizedUserId}`);
+      }
     } else {
       // Update existing user
       user.socketId = socket.id;

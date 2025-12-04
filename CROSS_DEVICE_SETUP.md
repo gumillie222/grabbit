@@ -47,12 +47,12 @@ This is configured in `Grabbit/config.js`. If you need to use a different IP (e.
 
 1. **Device 1**: 
    - Name: `Alice`
-   - Email: `alice@example.com`
+   - Email: `alice@grabbit.com`
    - Phone: `555-111-2222`
 
 2. **Device 2**:
    - Name: `Bob`
-   - Email: `bob@example.com`
+   - Email: `bob@grabbit.com`
    - Phone: `555-333-4444`
 
 ### 4. Adding Friends
@@ -60,7 +60,7 @@ This is configured in `Grabbit/config.js`. If you need to use a different IP (e.
 1. On **Device 1** (Alice):
    - Go to "Me" tab
    - Tap "Add or manage friends"
-   - Enter Bob's email (`bob@example.com`) or phone (`555-333-4444`)
+   - Enter Bob's email (`bob@grabbit.com`) or phone (`555-333-4444`)
    - Tap "Send friend request"
 
 2. On **Device 2** (Bob):

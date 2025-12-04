@@ -18,6 +18,18 @@ export const AuthProvider = ({ children }) => {
         const saved = await AsyncStorage.getItem(AUTH_KEY);
         if (saved) {
           const user = JSON.parse(saved);
+          
+          // Migrate old email addresses to grabbit.com domain
+          if (user.id === 'alice' && user.email === 'alice@example.com') {
+            user.email = 'alice@grabbit.com';
+            await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(user));
+            console.log('[Auth] Migrated Alice email to alice@grabbit.com');
+          } else if (user.id === 'bob' && user.email === 'bob@example.com') {
+            user.email = 'bob@grabbit.com';
+            await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(user));
+            console.log('[Auth] Migrated Bob email to bob@grabbit.com');
+          }
+          
           setCurrentUser(user);
           // Register with backend and wait for it to complete
           await registerUserWithBackend(user).catch(err => {
@@ -28,7 +40,7 @@ export const AuthProvider = ({ children }) => {
           const defaultUser = {
             id: 'bob',
             name: 'Bob',
-            email: 'bob@example.com',
+            email: 'bob@grabbit.com',
             phone: '555-333-4444',
           };
           setCurrentUser(defaultUser);
@@ -44,7 +56,7 @@ export const AuthProvider = ({ children }) => {
         const defaultUser = {
           id: 'bob',
           name: 'Bob',
-          email: 'bob@example.com',
+          email: 'bob@grabbit.com',
           phone: '555-333-4444',
         };
         setCurrentUser(defaultUser);
@@ -128,14 +140,14 @@ export const AuthProvider = ({ children }) => {
         newUser = {
           id: 'alice',
           name: 'Alice',
-          email: 'alice@example.com',
+          email: 'alice@grabbit.com',
           phone: '555-111-2222',
         };
       } else {
         newUser = {
           id: 'bob',
           name: 'Bob',
-          email: 'bob@example.com',
+          email: 'bob@grabbit.com',
           phone: '555-333-4444',
         };
       }

@@ -22,18 +22,8 @@ import { useAuth } from './AuthContext';
 import { SERVER_URL } from './config';
 import { getUserColors, getUserInitial } from './userColors';
 
-// ---- BASE URL ----
-const getBaseUrl = () => {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:4000';
-  } else if (Platform.OS === 'ios') {
-    return __DEV__ ? 'http://localhost:4000' : 'http://10.102.227.218:4000';
-  } else if (Platform.OS === 'android') {
-    return __DEV__ ? 'http://10.0.2.2:4000' : 'http://10.102.227.218:4000';
-  }
-  return 'http://localhost:4000';
-};
-const BASE_URL = getBaseUrl();
+// Use SERVER_URL from config for consistency
+const BASE_URL = SERVER_URL;
 
 export default function EventDetailScreen({ route, navigation }) {
   const {

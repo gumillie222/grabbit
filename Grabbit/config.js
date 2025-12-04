@@ -1,26 +1,59 @@
 // config.js - Shared configuration for server URLs
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
+// Your computer's local IP address on the network
+// Update this to match your computer's IP (find it with: ifconfig on Mac/Linux or ipconfig on Windows)
+// Make sure your phone and computer are on the same WiFi network
+const LOCAL_IP = '10.0.0.23';
 
 // Determine the correct server URL based on platform
 const getServerUrl = () => {
-  // For iOS Simulator, use localhost
+  // For iOS
   if (Platform.OS === 'ios') {
-    return 'http://localhost:4000';
+    // Check if running on simulator
+    // Constants.isDevice is true for physical device, false/undefined for simulator
+    const isSimulator = Constants.isDevice === false || 
+                        (Constants.isDevice === undefined && Constants.deviceName?.includes('Simulator')) ||
+                        Constants.deviceName?.includes('Simulator');
+    
+    if (isSimulator) {
+      // iOS Simulator can use localhost
+      return 'http://localhost:4000';
+    } else {
+      // Physical iOS device needs the computer's local IP
+      return `http://${LOCAL_IP}:4000`;
+    }
   }
   
-  // For Android Emulator, use 10.0.2.2 (special IP that maps to host's localhost)
+  // For Android
   if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:4000';
+    // Check if running on emulator
+    // Constants.isDevice is true for physical device, false/undefined for emulator
+    const isEmulator = Constants.isDevice === false || 
+                       (Constants.isDevice === undefined && (
+                         Constants.deviceName?.includes('emulator') ||
+                         Constants.deviceName?.includes('Emulator') ||
+                         Constants.deviceName?.includes('sdk')
+                       )) ||
+                       Constants.deviceName?.includes('emulator') ||
+                       Constants.deviceName?.includes('Emulator') ||
+                       Constants.deviceName?.includes('sdk');
+    
+    if (isEmulator) {
+      // Android Emulator uses 10.0.2.2 (special IP that maps to host's localhost)
+      return 'http://10.0.2.2:4000';
+    } else {
+      // Physical Android device needs the computer's local IP
+      return `http://${LOCAL_IP}:4000`;
+    }
   }
   
   // For web or other platforms, use localhost
   return 'http://localhost:4000';
-  
-  // For physical devices on the same network, you can use your computer's local IP:
-  // return 'http://10.0.0.162:4000';
 };
 
 export const SERVER_URL = getServerUrl();
 
-console.log(`[Config] Using server URL: ${SERVER_URL} (Platform: ${Platform.OS})`);
+console.log(`[Config] Using server URL: ${SERVER_URL} (Platform: ${Platform.OS}, Device: ${Constants.deviceName || 'unknown'}, IsDevice: ${Constants.isDevice})`);
 

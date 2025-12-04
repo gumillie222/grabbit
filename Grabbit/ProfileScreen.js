@@ -110,14 +110,20 @@ export default function ProfileScreen({ navigation }) {
       let hardcodedFriends = [];
       
       if (userName === 'bob') {
-        // Bob has only Alice as a friend
+        // Bob has Alice and some dummy friends
         hardcodedFriends = [
-          { id: 'alice', name: 'Alice', phone: '555-111-2222', email: 'alice@example.com' },
+          { id: 'alice', name: 'Alice', phone: '555-111-2222', email: 'alice@grabbit.com' },
+          { id: 'charlie', name: 'Charlie', phone: '555-444-5555', email: 'charlie@grabbit.com' },
+          { id: 'david', name: 'David', phone: '555-666-7777', email: 'david@grabbit.com' },
+          { id: 'emma', name: 'Emma', phone: '555-888-9999', email: 'emma@grabbit.com' },
         ];
       } else if (userName === 'alice') {
-        // Alice has only Bob as a friend
+        // Alice has Bob and some dummy friends
         hardcodedFriends = [
-          { id: 'bob', name: 'Bob', phone: '555-333-4444', email: 'bob@example.com' },
+          { id: 'bob', name: 'Bob', phone: '555-333-4444', email: 'bob@grabbit.com' },
+          { id: 'charlie', name: 'Charlie', phone: '555-444-5555', email: 'charlie@grabbit.com' },
+          { id: 'david', name: 'David', phone: '555-666-7777', email: 'david@grabbit.com' },
+          { id: 'emma', name: 'Emma', phone: '555-888-9999', email: 'emma@grabbit.com' },
         ];
       } else {
         // For other users, try to load from backend
