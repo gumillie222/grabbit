@@ -19,6 +19,7 @@ import { EventContext } from './EventContext';
 import { useAuth } from './AuthContext';
 import { api } from './api';
 import { SERVER_URL } from './config';
+import { getUserColors, getUserInitial } from './userColors';
 
 export default function ProfileScreen({ navigation }) {
   const { archivedEvents, unarchiveEvent, friends, setFriends } = useContext(EventContext);
@@ -279,13 +280,15 @@ export default function ProfileScreen({ navigation }) {
             No friends yet. Add someone above!
           </Text>
         ) : (
-          friends.map(friend => (
-            <View key={friend.id} style={profileStyles.friendRow}>
-              <View style={profileStyles.friendAvatar}>
-                <Text style={profileStyles.friendAvatarText}>
-                  {friend.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+          friends.map(friend => {
+            const userColors = getUserColors(friend.id);
+            return (
+              <View key={friend.id} style={profileStyles.friendRow}>
+                <View style={[profileStyles.friendAvatar, { backgroundColor: userColors.backgroundColor }]}>
+                  <Text style={[profileStyles.friendAvatarText, { color: userColors.textColor }]}>
+                    {getUserInitial(friend.id, friend.name)}
+                  </Text>
+                </View>
               <View style={{ flex: 1 }}>
                 <Text style={profileStyles.friendName}>{friend.name}</Text>
                 {friend.phone ? (
@@ -296,7 +299,8 @@ export default function ProfileScreen({ navigation }) {
                 ) : null}
               </View>
             </View>
-          ))
+            );
+          })
         )}
       </View>
     </View>
@@ -356,11 +360,16 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {/* Avatar */}
-        <View style={profileStyles.avatarLarge}>
-          <Text style={profileStyles.avatarTextLarge}>
-            {profile.name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
+        {(() => {
+          const userColors = getUserColors(currentUser?.id);
+          return (
+            <View style={[profileStyles.avatarLarge, { backgroundColor: userColors.backgroundColor }]}>
+              <Text style={[profileStyles.avatarTextLarge, { color: userColors.textColor }]}>
+                {getUserInitial(currentUser?.id, profile.name)}
+              </Text>
+            </View>
+          );
+        })()}
 
         {/* User Info – using the larger base sizes from profileStyles */}
         <Text style={profileStyles.userName}>{profile.name}</Text>

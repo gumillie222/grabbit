@@ -223,8 +223,10 @@ export const EventProvider = ({ children }) => {
       console.log('[EventContext] Received event update:', payload);
       const { eventId, eventData, fromUserId } = payload;
       
-      if (fromUserId === currentUser.id) {
-        return; // Ignore our own updates
+      // Ignore our own updates (case-insensitive comparison)
+      if (fromUserId && currentUser?.id && fromUserId.toLowerCase() === currentUser.id.toLowerCase()) {
+        console.log('[EventContext] Ignoring own update for event:', eventId);
+        return;
       }
 
       // Use refs to get current state without nested setState
@@ -237,6 +239,11 @@ export const EventProvider = ({ children }) => {
       
       const isNowArchived = eventData.archived === true;
       const wasArchived = existingEvent?.archived === true;
+      
+      // Log archive status changes for debugging
+      if (isNowArchived !== wasArchived) {
+        console.log(`[EventContext] Archive status changed for event ${eventId}: ${wasArchived} -> ${isNowArchived} (from user: ${fromUserId})`);
+      }
       
       // Build updated event
       const updatedEvent = existingEvent ? {
@@ -583,28 +590,35 @@ export const EventProvider = ({ children }) => {
 
     // Sync with backend and broadcast to all participants
     if (currentUser?.id) {
+      // Send real-time update via socket IMMEDIATELY for instant cross-device sync
+      if (socketRef.current && socketRef.current.connected) {
+        const { sharedWith, ...eventWithoutSharedWith } = target;
+        socketRef.current.emit('event:update', {
+          eventId: id,
+          eventData: {
+            ...eventWithoutSharedWith,
+            title: target.title,
+            items: target.items || [],
+            archived: true,
+            participants: target.participants || [],
+          },
+        });
+        console.log(`[EventContext] Sent archive event:update for event ${id} (real-time broadcast)`);
+      } else {
+        console.warn(`[EventContext] Socket not connected, cannot send real-time archive update for event ${id}`);
+      }
+
+      // Persist to backend (in background, don't block)
       try {
         await api.saveEvent(currentUser.id, id, {
           ...target,
           archived: true,
           participants: target.participants || [],
         });
-
-        // Send real-time update via socket
-        if (socketRef.current && socketRef.current.connected) {
-          const { sharedWith, ...eventWithoutSharedWith } = target;
-          socketRef.current.emit('event:update', {
-            eventId: id,
-            eventData: {
-              ...eventWithoutSharedWith,
-              archived: true,
-              participants: target.participants || [],
-            },
-          });
-          console.log(`[EventContext] Sent archive event:update for event ${id}`);
-        }
       } catch (err) {
-        console.error('[EventContext] Failed to archive event:', err);
+        console.error('[EventContext] Failed to persist archive to backend:', err);
+        // Optionally reload events to restore state on error
+        reloadEvents();
       }
     }
   };
@@ -629,28 +643,35 @@ export const EventProvider = ({ children }) => {
 
     // Sync with backend and broadcast to all participants
     if (currentUser?.id) {
+      // Send real-time update via socket IMMEDIATELY for instant cross-device sync
+      if (socketRef.current && socketRef.current.connected) {
+        const { sharedWith, ...eventWithoutSharedWith } = target;
+        socketRef.current.emit('event:update', {
+          eventId: id,
+          eventData: {
+            ...eventWithoutSharedWith,
+            title: target.title,
+            items: target.items || [],
+            archived: false,
+            participants: target.participants || [],
+          },
+        });
+        console.log(`[EventContext] Sent unarchive event:update for event ${id} (real-time broadcast)`);
+      } else {
+        console.warn(`[EventContext] Socket not connected, cannot send real-time unarchive update for event ${id}`);
+      }
+
+      // Persist to backend (in background, don't block)
       try {
         await api.saveEvent(currentUser.id, id, {
           ...target,
           archived: false,
           participants: target.participants || [],
         });
-
-        // Send real-time update via socket
-        if (socketRef.current && socketRef.current.connected) {
-          const { sharedWith, ...eventWithoutSharedWith } = target;
-          socketRef.current.emit('event:update', {
-            eventId: id,
-            eventData: {
-              ...eventWithoutSharedWith,
-              archived: false,
-              participants: target.participants || [],
-            },
-          });
-          console.log(`[EventContext] Sent unarchive event:update for event ${id}`);
-        }
       } catch (err) {
-        console.error('[EventContext] Failed to unarchive event:', err);
+        console.error('[EventContext] Failed to persist unarchive to backend:', err);
+        // Optionally reload events to restore state on error
+        reloadEvents();
       }
     }
   };

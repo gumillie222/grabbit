@@ -24,6 +24,7 @@ import { api } from './api';
 export default function HomeScreen({ navigation }) {
   const {
     events,
+    archivedEvents,
     addEvent,
     updateItems,
     updateParticipants,
@@ -37,6 +38,8 @@ export default function HomeScreen({ navigation }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [eventToDelete, setEventToDelete] = useState(null);
+  const [archiveModalVisible, setArchiveModalVisible] = useState(false);
+  const [eventToArchive, setEventToArchive] = useState(null);
 
   // Reload events when screen comes into focus (for real-time updates)
   useFocusEffect(
@@ -108,7 +111,21 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleArchiveEvent = (id) => {
-    archiveEvent(id);
+    setEventToArchive(id);
+    setArchiveModalVisible(true);
+  };
+
+  const confirmArchive = () => {
+    if (eventToArchive) {
+      archiveEvent(eventToArchive);
+      setArchiveModalVisible(false);
+      setEventToArchive(null);
+    }
+  };
+
+  const cancelArchive = () => {
+    setArchiveModalVisible(false);
+    setEventToArchive(null);
   };
 
   return (
@@ -123,6 +140,8 @@ export default function HomeScreen({ navigation }) {
         onUpdateItems={handleUpdateItems}
         onUpdateParticipants={handleUpdateParticipants}
         friends={friends}
+        existingEvents={events}
+        archivedEvents={archivedEvents}
       />
 
       <View style={homeStyles.header}>
@@ -164,6 +183,46 @@ export default function HomeScreen({ navigation }) {
         </View>
       </ScrollView>
 
+      {/* ---- ARCHIVE CONFIRMATION MODAL ---- */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={archiveModalVisible}
+        onRequestClose={cancelArchive}
+      >
+        <TouchableWithoutFeedback onPress={cancelArchive}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={homeStyles.deleteModalContainer}>
+                  <Text style={homeStyles.deleteModalTitle}>Archive Event</Text>
+                  <Text style={homeStyles.deleteModalMessage}>
+                    Are you sure you want to archive this event? This event will be archived for all participants. You can unarchive it later from the archived events section.
+                  </Text>
+                  <View style={homeStyles.deleteModalActions}>
+                    <TouchableOpacity
+                      style={homeStyles.deleteModalCancelBtn}
+                      onPress={cancelArchive}
+                    >
+                      <FontAwesome5 name="times" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={homeStyles.deleteModalConfirmBtn}
+                      onPress={confirmArchive}
+                    >
+                      <FontAwesome5 name="check" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       {/* ---- DELETE CONFIRMATION MODAL ---- */}
       <Modal
         animationType="fade"
@@ -181,7 +240,7 @@ export default function HomeScreen({ navigation }) {
                 <View style={homeStyles.deleteModalContainer}>
                   <Text style={homeStyles.deleteModalTitle}>Delete Event</Text>
                   <Text style={homeStyles.deleteModalMessage}>
-                    Are you sure you want to delete this event?
+                    Are you sure you want to delete this event? This action is IRREVERSIBLE. All items and participants will be permanently deleted.
                   </Text>
                   <View style={homeStyles.deleteModalActions}>
                     <TouchableOpacity

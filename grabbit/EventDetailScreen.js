@@ -20,6 +20,7 @@ import { detailStyles } from './styles/eventDetailStyles.js';
 import { EventContext } from './EventContext';
 import { useAuth } from './AuthContext';
 import { SERVER_URL } from './config';
+import { getUserColors, getUserInitial } from './userColors';
 
 // ---- BASE URL ----
 const getBaseUrl = () => {
@@ -1182,15 +1183,17 @@ export default function EventDetailScreen({ route, navigation }) {
                 isReadOnly ? showArchivedAlert() : toggleItemClaim(item.id)
               }
             >
-              {item.claimedBy ? (
-                <View style={detailStyles.avatarSmallSelected}>
-                  <Text style={detailStyles.avatarTextSmall}>
-                    {item.claimedBy === currentUser?.id 
-                      ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
-                      : (getUserNameFromId(item.claimedBy)?.charAt(0).toUpperCase() || item.claimedBy?.charAt(0).toUpperCase() || '?')}
-                  </Text>
-                </View>
-              ) : (
+              {item.claimedBy ? (() => {
+                const userColors = getUserColors(item.claimedBy);
+                const userName = getUserNameFromId(item.claimedBy);
+                return (
+                  <View style={[detailStyles.avatarSmallSelected, { backgroundColor: userColors.backgroundColor }]}>
+                    <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
+                      {getUserInitial(item.claimedBy, userName)}
+                    </Text>
+                  </View>
+                );
+              })() : (
                 <View
                   style={[
                     detailStyles.dashedCircle,
@@ -1213,15 +1216,17 @@ export default function EventDetailScreen({ route, navigation }) {
         )}
 
         {/* buyer badge on recent list */}
-        {!isActiveList && item.claimedBy && (
-          <View style={detailStyles.avatarSmall}>
-            <Text style={detailStyles.avatarTextSmall}>
-              {item.claimedBy === currentUser?.id 
-                ? (currentUser?.name?.charAt(0).toUpperCase() || 'M')
-                : (getUserNameFromId(item.claimedBy)?.charAt(0).toUpperCase() || item.claimedBy?.charAt(0).toUpperCase() || '?')}
-            </Text>
-          </View>
-        )}
+        {!isActiveList && item.claimedBy && (() => {
+          const userColors = getUserColors(item.claimedBy);
+          const userName = getUserNameFromId(item.claimedBy);
+          return (
+            <View style={[detailStyles.avatarSmall, { backgroundColor: userColors.backgroundColor }]}>
+              <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
+                {getUserInitial(item.claimedBy, userName)}
+              </Text>
+            </View>
+          );
+        })()}
       </View>
     </View>
   );
@@ -1312,19 +1317,18 @@ export default function EventDetailScreen({ route, navigation }) {
 
                 {sharers.map((id, index) => {
                   const name = getUserNameFromId(id);
-                  const isCurrentUser = id === currentUser?.id;
+                  const userColors = getUserColors(id);
                   const uniqueKey = `${item.id}-${id}-${index}`;
                   return (
                     <View
                       key={uniqueKey}
-                      style={
-                        isCurrentUser
-                          ? [detailStyles.avatarSmallSelected, { marginRight: 6 }]
-                          : [detailStyles.avatarSmall, { marginRight: 6 }]
-                      }
+                      style={[
+                        detailStyles.avatarSmall,
+                        { marginRight: 6, backgroundColor: userColors.backgroundColor }
+                      ]}
                     >
-                      <Text style={detailStyles.avatarTextSmall}>
-                        {name?.charAt(0).toUpperCase() || '?'}
+                      <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
+                        {getUserInitial(id, name)}
                       </Text>
                     </View>
                   );
@@ -1422,11 +1426,13 @@ export default function EventDetailScreen({ route, navigation }) {
         {splitData.transactions.map((t, index) => {
           const fromName = getUserNameFromId(t.from) || t.from;
           const toName = getUserNameFromId(t.to) || t.to;
+          const fromColors = getUserColors(t.from);
+          const toColors = getUserColors(t.to);
           return (
             <View key={index} style={detailStyles.splitRow}>
-              <View style={detailStyles.avatarMedium}>
-                <Text style={detailStyles.avatarTextMedium}>
-                  {getInitial(fromName)}
+              <View style={[detailStyles.avatarMedium, { backgroundColor: fromColors.backgroundColor }]}>
+                <Text style={[detailStyles.avatarTextMedium, { color: fromColors.textColor }]}>
+                  {getUserInitial(t.from, fromName)}
                 </Text>
               </View>
               <View style={detailStyles.arrowContainer}>
@@ -1434,9 +1440,9 @@ export default function EventDetailScreen({ route, navigation }) {
                 <View style={detailStyles.arrowLine} />
                 <View style={detailStyles.arrowHead} />
               </View>
-              <View style={detailStyles.avatarMedium}>
-                <Text style={detailStyles.avatarTextMedium}>
-                  {getInitial(toName)}
+              <View style={[detailStyles.avatarMedium, { backgroundColor: toColors.backgroundColor }]}>
+                <Text style={[detailStyles.avatarTextMedium, { color: toColors.textColor }]}>
+                  {getUserInitial(t.to, toName)}
                 </Text>
               </View>
             </View>
@@ -1510,13 +1516,14 @@ export default function EventDetailScreen({ route, navigation }) {
           />
           {participants.map((participantId, index) => {
             const participantName = getUserNameFromId(participantId) || participantId;
+            const userColors = getUserColors(participantId);
             return (
               <View
                 key={index}
-                style={detailStyles.avatarSmall }
+                style={[detailStyles.avatarSmall, { backgroundColor: userColors.backgroundColor }]}
               >
-                <Text style={detailStyles.avatarTextSmall}>
-                  {participantName?.charAt(0).toUpperCase() || '?'}
+                <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
+                  {getUserInitial(participantId, participantName)}
                 </Text>
               </View>
             );
@@ -1600,14 +1607,14 @@ export default function EventDetailScreen({ route, navigation }) {
               <View style={detailStyles.sharedByRow}>
                 {buySharedBy.map(id => {
                   const name = getUserNameFromId(id);
+                  const userColors = getUserColors(id);
                   return (
                     <View
                       key={id}
-                      style={[detailStyles.avatarSmall, { marginRight: 6 }]
-                      }
+                      style={[detailStyles.avatarSmall, { marginRight: 6, backgroundColor: userColors.backgroundColor }]}
                     >
-                      <Text style={detailStyles.avatarTextSmall}>
-                        {name?.charAt(0).toUpperCase() || '?'}
+                      <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
+                        {getUserInitial(id, name)}
                       </Text>
                     </View>
                   );
@@ -1990,15 +1997,16 @@ export default function EventDetailScreen({ route, navigation }) {
                     const spending = getSpendingPerPerson();
                     const amount = spending[personId] || 0;
                     const personName = getUserNameFromId(personId) || personId;
+                    const userColors = getUserColors(personId);
                     
                     return (
                       <View
                         key={personId}
                         style={detailStyles.detailedItemRow}
                       >
-                        <View style={detailStyles.avatarMedium}>
-                          <Text style={detailStyles.avatarTextMedium}>
-                            {personName?.charAt(0).toUpperCase() || '?'}
+                        <View style={[detailStyles.avatarMedium, { backgroundColor: userColors.backgroundColor }]}>
+                          <Text style={[detailStyles.avatarTextMedium, { color: userColors.textColor }]}>
+                            {getUserInitial(personId, personName)}
                           </Text>
                         </View>
                         <Text style={detailStyles.detailedPersonName}>

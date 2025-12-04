@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 
@@ -15,6 +16,7 @@ import { globalStyles, colors } from './styles/styles.js';
 import { homeStyles } from './styles/homeStyles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
 import { useAuth } from './AuthContext';
+import { getUserColors, getUserInitial } from './userColors';
 
 // Determine the correct BASE_URL based on platform
 const getBaseUrl = () => {
@@ -39,6 +41,8 @@ export default function AddEventModal({
   onUpdateParticipants,
   // friends should be passed from HomeScreen/EventContext so it matches Profile
   friends = [],
+  existingEvents = [],
+  archivedEvents = [],
 }) {
   const { currentUser } = useAuth();
   const [newGroupName, setNewGroupName] = useState('');
@@ -194,6 +198,22 @@ export default function AddEventModal({
   const handleAddNewGroup = () => {
     if (newGroupName.trim() === '') return;
 
+    // Check for duplicate event names (case-insensitive)
+    const trimmedName = newGroupName.trim();
+    const allEvents = [...existingEvents, ...archivedEvents];
+    const duplicateEvent = allEvents.find(
+      event => event.title && event.title.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (duplicateEvent) {
+      Alert.alert(
+        'Duplicate Event Name',
+        `An event with the name "${trimmedName}" already exists. Please choose a different name.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     const newEventId = Date.now();
     const initialItems = selectedItems.map((item, index) => ({
       id: Date.now() + index,
@@ -292,7 +312,16 @@ export default function AddEventModal({
 
               {/* Show current user plus any selected friends as round avatars with single letter */}
               {selectedParticipants.map((participant, index) => {
-                const isCurrentUser = participant === currentUser?.name;
+                // Find the user ID for this participant (could be name or ID)
+                let participantId = participant;
+                if (participant === currentUser?.name) {
+                  participantId = currentUser?.id;
+                } else {
+                  // Try to find friend by name
+                  const friend = friends.find(f => f.name === participant);
+                  if (friend) participantId = friend.id;
+                }
+                const userColors = getUserColors(participantId);
                 return (
                   <View
                     key={`${participant}-${index}`}
@@ -301,14 +330,14 @@ export default function AddEventModal({
                         width: 36,
                         height: 36,
                         borderRadius: 18,
-                        backgroundColor: isCurrentUser ? '#A89F91' : '#D6CFC4',
+                        backgroundColor: userColors.backgroundColor,
                         justifyContent: 'center',
                         alignItems: 'center',
                       },
                     ]}
                   >
-                    <Text style={detailStyles.avatarTextSmall}>
-                      {participant?.charAt(0).toUpperCase() || '?'}
+                    <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
+                      {getUserInitial(participantId, participant)}
                     </Text>
                   </View>
                 );
