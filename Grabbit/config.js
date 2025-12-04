@@ -13,9 +13,9 @@ const getServerUrl = () => {
   if (Platform.OS === 'ios') {
     // Check if running on simulator
     // Constants.isDevice is true for physical device, false/undefined for simulator
+    // Only check device name if isDevice is false or undefined (not true)
     const isSimulator = Constants.isDevice === false || 
-                        (Constants.isDevice === undefined && Constants.deviceName?.includes('Simulator')) ||
-                        Constants.deviceName?.includes('Simulator');
+                        (Constants.isDevice !== true && Constants.deviceName?.includes('Simulator'));
     
     if (isSimulator) {
       // iOS Simulator can use localhost
@@ -30,15 +30,13 @@ const getServerUrl = () => {
   if (Platform.OS === 'android') {
     // Check if running on emulator
     // Constants.isDevice is true for physical device, false/undefined for emulator
+    // Only check device name if isDevice is false or undefined (not true)
     const isEmulator = Constants.isDevice === false || 
-                       (Constants.isDevice === undefined && (
+                       (Constants.isDevice !== true && (
                          Constants.deviceName?.includes('emulator') ||
                          Constants.deviceName?.includes('Emulator') ||
                          Constants.deviceName?.includes('sdk')
-                       )) ||
-                       Constants.deviceName?.includes('emulator') ||
-                       Constants.deviceName?.includes('Emulator') ||
-                       Constants.deviceName?.includes('sdk');
+                       ));
     
     if (isEmulator) {
       // Android Emulator uses 10.0.2.2 (special IP that maps to host's localhost)

@@ -136,6 +136,7 @@ io.on("connection", (socket) => {
       let participants = [];
       
       // If participants are provided, normalize them to lowercase IDs and filter duplicates
+      // Save ALL participant IDs, even if they're not registered users (allows dummy friends)
       if (eventData.participants && Array.isArray(eventData.participants) && eventData.participants.length > 0) {
         // Normalize participants to lowercase IDs (handle both names and IDs)
         const normalizedParticipants = [];
@@ -143,18 +144,24 @@ io.on("connection", (socket) => {
           if (!participant) continue;
           // Convert to lowercase ID
           const normalizedId = participant.toLowerCase();
-          // Check if it's a valid user ID
-          if (users.has(normalizedId) && !normalizedParticipants.includes(normalizedId)) {
+          // Save all participant IDs, not just registered users
+          // This allows dummy friends to be saved as participants
+          if (!normalizedParticipants.includes(normalizedId)) {
             normalizedParticipants.push(normalizedId);
           }
         }
         
-        // Build sharedWith from normalized participants, filtering duplicates
+        // Build sharedWith from normalized participants, but only include registered users
+        // sharedWith is used for access control, so it should only include real users
         const normalizedOwnerId = ownerId?.toLowerCase();
         sharedWith = [normalizedOwnerId]; // Start with owner
         for (const participantId of normalizedParticipants) {
           if (participantId && !sharedWith.includes(participantId)) {
-            sharedWith.push(participantId);
+            // Only add to sharedWith if it's a registered user (for access control)
+            // But we still save all participants in the participants array
+            if (users.has(participantId)) {
+              sharedWith.push(participantId);
+            }
           }
         }
         console.log(`[Socket] Updated sharedWith from participants: ${oldSharedWith.join(', ')} -> ${sharedWith.join(', ')}`);
@@ -559,22 +566,30 @@ app.post("/api/events", (req, res) => {
   
   if (eventData.participants && Array.isArray(eventData.participants)) {
     // Normalize participants to lowercase IDs (handle both names and IDs)
+    // Save ALL participant IDs sent by client, even if they're not registered users
+    // This allows dummy friends (charlie, david, emma) to persist
     const normalizedParticipants = [];
     for (const participant of eventData.participants) {
       if (!participant) continue;
       // Convert to lowercase ID
       const normalizedId = participant.toLowerCase();
-      // Check if it's a valid user ID
-      if (users.has(normalizedId) && !normalizedParticipants.includes(normalizedId)) {
+      // Save all participant IDs, not just registered users
+      // This allows dummy friends to be saved as participants
+      if (!normalizedParticipants.includes(normalizedId)) {
         normalizedParticipants.push(normalizedId);
       }
     }
     
-    // Build sharedWith from normalized participants, filtering duplicates
+    // Build sharedWith from normalized participants, but only include registered users
+    // sharedWith is used for access control, so it should only include real users
     sharedWith = [userId]; // Start with owner
     for (const participantId of normalizedParticipants) {
       if (participantId && !sharedWith.includes(participantId)) {
-        sharedWith.push(participantId);
+        // Only add to sharedWith if it's a registered user (for access control)
+        // But we still save all participants in the participants array
+        if (users.has(participantId)) {
+          sharedWith.push(participantId);
+        }
       }
     }
     
@@ -583,9 +598,10 @@ app.post("/api/events", (req, res) => {
       const user = users.get(uid);
       return user ? `${user.name} (${uid})` : uid;
     });
-    console.log(`[API] Event involves ${sharedWith.length} account(s): ${involvedUsers.join(', ')}`);
+    console.log(`[API] Event involves ${sharedWith.length} registered account(s): ${involvedUsers.join(', ')}`);
+    console.log(`[API] Event has ${normalizedParticipants.length} participant(s): ${normalizedParticipants.join(', ')}`);
     
-    // Use normalized participants
+    // Use normalized participants (includes all, even dummy friends)
     participants = normalizedParticipants;
   } else {
     // If no participants provided, use existing sharedWith or provided sharedWith
