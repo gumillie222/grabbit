@@ -23,7 +23,7 @@ import { getUserColors, getUserInitial } from './userColors';
 
 export default function ProfileScreen({ navigation }) {
   const { archivedEvents, unarchiveEvent, friends, setFriends } = useContext(EventContext);
-  const { currentUser, switchAccount, updateUser } = useAuth();
+  const { currentUser, switchAccount } = useAuth();
   const socketRef = useRef(null);
   
   const [profile, setProfile] = useState({
@@ -42,11 +42,6 @@ export default function ProfileScreen({ navigation }) {
       });
     }
   }, [currentUser]);
-
-  const [editVisible, setEditVisible] = useState(false);
-  const [draftName, setDraftName] = useState(profile.name);
-  const [draftPhone, setDraftPhone] = useState(profile.phone);
-  const [draftEmail, setDraftEmail] = useState(profile.email);
 
   const [activeTab, setActiveTab] = useState('friends'); // 'friends' | 'archive'
 
@@ -67,13 +62,6 @@ export default function ProfileScreen({ navigation }) {
   const [friendModalVisible, setFriendModalVisible] = useState(false);
   const [friendTab, setFriendTab] = useState('add'); // 'add' | 'requests'
   const [settingsVisible, setSettingsVisible] = useState(false);
-
-  const openEdit = () => {
-    setDraftName(profile.name);
-    setDraftPhone(profile.phone);
-    setDraftEmail(profile.email);
-    setEditVisible(true);
-  };
 
   // Load friends and friend requests on mount
   useEffect(() => {
@@ -162,19 +150,6 @@ export default function ProfileScreen({ navigation }) {
     } catch (error) {
       console.error('Error loading friend requests:', error);
     }
-  };
-
-  const saveEdits = async () => {
-    const updated = {
-      name: draftName.trim() || profile.name,
-      phone: draftPhone.trim() || profile.phone,
-      email: draftEmail.trim() || profile.email,
-    };
-    setProfile(updated);
-    if (currentUser) {
-      await updateUser(updated);
-    }
-    setEditVisible(false);
   };
 
   const handleSendFriendRequest = async () => {
@@ -348,9 +323,6 @@ export default function ProfileScreen({ navigation }) {
       <View style={profileStyles.profileContainer}>
         {/* Top Icons */}
         <View style={profileStyles.topIcons}>
-          <TouchableOpacity style={profileStyles.iconButton} onPress={openEdit}>
-            <FontAwesome5 name="edit" size={20} color={colors.accent} />
-          </TouchableOpacity>
           <TouchableOpacity
             style={profileStyles.iconButton}
             onPress={() => setSettingsVisible(true)}
@@ -472,58 +444,6 @@ export default function ProfileScreen({ navigation }) {
             </View>
 
             <Text style={profileStyles.settingsFooter}>Version 1.0 · Demo build</Text>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Edit profile modal */}
-      <Modal
-        animationType="fade"
-        transparent
-        visible={editVisible}
-        onRequestClose={() => setEditVisible(false)}
-      >
-        <View style={globalStyles.modalOverlay}>
-          <View style={profileStyles.modalContainer}>
-            <Text style={profileStyles.modalTitle}>Edit profile</Text>
-            <TextInput
-              style={profileStyles.modalInput}
-              value={draftName}
-              onChangeText={setDraftName}
-              placeholder="Name"
-              placeholderTextColor={colors.placeholder}
-            />
-            <TextInput
-              style={profileStyles.modalInput}
-              value={draftPhone}
-              onChangeText={setDraftPhone}
-              placeholder="Phone number"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="phone-pad"
-            />
-            <TextInput
-              style={profileStyles.modalInput}
-              value={draftEmail}
-              onChangeText={setDraftEmail}
-              placeholder="Email address"
-              placeholderTextColor={colors.placeholder}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <View style={profileStyles.modalButtonRow}>
-              <TouchableOpacity
-                style={[profileStyles.modalButton, profileStyles.cancelButton]}
-                onPress={() => setEditVisible(false)}
-              >
-                <Text style={profileStyles.modalButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[profileStyles.modalButton, profileStyles.saveButton]}
-                onPress={saveEdits}
-              >
-                <Text style={profileStyles.modalButtonText}>Save</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>

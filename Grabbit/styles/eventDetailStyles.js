@@ -520,7 +520,7 @@ export const detailStyles = StyleSheet.create({
   },
   aiSuggestionsScroll: {
     marginTop: 8,
-    maxHeight: 250,
+    maxHeight: 200,
     flexGrow: 0,
   },
   aiCheckbox: {
@@ -530,6 +530,9 @@ export const detailStyles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.text,
     marginRight: 12,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   aiCheckboxSelected: {
     backgroundColor: colors.accent,
@@ -543,7 +546,10 @@ export const detailStyles = StyleSheet.create({
   aiModalFooterRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: 16,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
     gap: 12,
   },
   aiAddButton: {

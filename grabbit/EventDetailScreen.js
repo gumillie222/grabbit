@@ -633,6 +633,14 @@ export default function EventDetailScreen({ route, navigation }) {
     }
   };
 
+  // Helper function to format price to 2 decimal places
+  const formatPrice = (price) => {
+    if (!price || price === '') return '0.00';
+    const num = parseFloat(price);
+    if (isNaN(num)) return '0.00';
+    return num.toFixed(2);
+  };
+
   const handlePriceInputChange = text => {
     const numericRegex = /^\d*\.?\d*$/;
     if (text === '' || numericRegex.test(text)) setPriceInput(text);
@@ -648,7 +656,7 @@ export default function EventDetailScreen({ route, navigation }) {
     if (isReadOnly) return showArchivedAlert();
     setItems(current =>
       current.map(item =>
-        item.id === itemId ? { ...item, price: editingPriceValue || null } : item
+        item.id === itemId ? { ...item, price: formatPrice(editingPriceValue) } : item
       )
     );
     setEditingPriceItemId(null);
@@ -669,7 +677,7 @@ export default function EventDetailScreen({ route, navigation }) {
             ? {
                 ...item,
                 bought: true,
-                price: priceInput,
+                price: formatPrice(priceInput),
                 claimedBy: currentUser?.id || null,
                 sharedBy: buySharedBy.length > 0 ? buySharedBy : [currentUser?.id].filter(Boolean),
               }
@@ -1152,7 +1160,7 @@ export default function EventDetailScreen({ route, navigation }) {
                   fontSize: 16,
                 }}
               >
-                ${item.price || '0.00'}
+                ${formatPrice(item.price)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -1788,30 +1796,36 @@ export default function EventDetailScreen({ route, navigation }) {
                   </TouchableOpacity>
 
                   {suggestions.length > 0 && (
-                    <ScrollView
-                      style={detailStyles.aiSuggestionsScroll}
-                      contentContainerStyle={{ paddingBottom: 16 }}
-                      showsVerticalScrollIndicator
-                      nestedScrollEnabled
-                    >
-                      {suggestions.map(s => (
-                        <TouchableOpacity
-                          key={s.id}
-                          style={detailStyles.aiSuggestionRow}
-                          onPress={() => toggleSuggestion(s.id)}
-                        >
-                          <View
-                            style={[
-                              detailStyles.aiCheckbox,
-                              s.selected && detailStyles.aiCheckboxSelected,
-                            ]}
-                          />
-                          <Text style={detailStyles.aiSuggestionText}>
-                            {s.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-
+                    <>
+                      <ScrollView
+                        style={detailStyles.aiSuggestionsScroll}
+                        contentContainerStyle={{ paddingBottom: 8 }}
+                        showsVerticalScrollIndicator
+                        nestedScrollEnabled
+                      >
+                        {suggestions.map(s => (
+                          <TouchableOpacity
+                            key={s.id}
+                            style={detailStyles.aiSuggestionRow}
+                            onPress={() => toggleSuggestion(s.id)}
+                          >
+                            <View
+                              style={[
+                                detailStyles.aiCheckbox,
+                                s.selected && detailStyles.aiCheckboxSelected,
+                              ]}
+                            >
+                              {s.selected && (
+                                <FontAwesome5 name="check" size={10} color="#fff" />
+                              )}
+                            </View>
+                            <Text style={detailStyles.aiSuggestionText}>
+                              {s.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                      
                       <View style={detailStyles.aiModalFooterRow}>
                         <TouchableOpacity
                           style={detailStyles.aiAddButton}
@@ -1822,7 +1836,7 @@ export default function EventDetailScreen({ route, navigation }) {
                           </Text>
                         </TouchableOpacity>
                       </View>
-                    </ScrollView>
+                    </>
                   )}
                 </View>
               </TouchableWithoutFeedback>
