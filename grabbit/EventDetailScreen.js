@@ -89,6 +89,7 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const [activeTab, setActiveTab] = useState('List');
   const [hasSettled, setHasSettled] = useState(false);
+  const [hintExpanded, setHintExpanded] = useState(false);
 
   const [newItemText, setNewItemText] = useState('');
   const [newItemUrgent, setNewItemUrgent] = useState(false);
@@ -1233,6 +1234,54 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const renderListTab = () => (
     <View style={detailStyles.listContainer}>
+      {/* Hint Section */}
+      {hintExpanded ? (
+        <View style={detailStyles.hintContainer}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <Text style={detailStyles.hintTitle}>Quick Tips</Text>
+            <TouchableOpacity
+              onPress={() => setHintExpanded(false)}
+              style={detailStyles.hintToggleButton}
+            >
+              <FontAwesome5 name="chevron-up" size={14} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={detailStyles.hintRow}>
+            <View style={detailStyles.hintIcon}>
+              <Text style={detailStyles.exclamation}>!</Text>
+            </View>
+            <Text style={detailStyles.hintText}>
+              <Text style={{ fontFamily: fonts.bold }}>Urgency:</Text> Tap the ! button to mark items as urgent (high priority)
+            </Text>
+          </View>
+          
+          <View style={detailStyles.hintRow}>
+            <View style={detailStyles.hintIconDashed} />
+            <Text style={detailStyles.hintText}>
+              <Text style={{ fontFamily: fonts.bold }}>Claim:</Text> Tap the circle button to claim an item. Your initial will appear when claimed.
+            </Text>
+          </View>
+          
+          <View style={detailStyles.hintRow}>
+            <View style={detailStyles.hintIconAI}>
+              <FontAwesome5 name="magic" size={12} color={colors.text} />
+            </View>
+            <Text style={detailStyles.hintText}>
+              <Text style={{ fontFamily: fonts.bold }}>AI Suggestions:</Text> Tap the wand button to get AI item suggestions based on your event.
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <TouchableOpacity
+          onPress={() => setHintExpanded(true)}
+          style={detailStyles.hintCollapsedContainer}
+        >
+          <FontAwesome5 name="question-circle" size={20} color={colors.accent} />
+          <Text style={detailStyles.hintCollapsedText}>Tips</Text>
+        </TouchableOpacity>
+      )}
+
       {activeItems.map(item => renderItemRow(item, true))}
 
       {/* NEW ITEM ROW */}
@@ -1635,7 +1684,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 <View style={detailStyles.shareDropdown}>
                   {participants.map(p => {
                     const isSelected = buySharedBy.includes(p);
-                    const displayName = p === currentUser?.id ? 'Me' : getUserNameFromId(p) || p;
+                    const displayName = p === currentUser?.id ? (currentUser?.name || 'Me') : getUserNameFromId(p) || p;
                     return (
                       <TouchableOpacity
                         key={p}
@@ -1915,7 +1964,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 >
                   {participants.map(p => {
                     const isSelected = sharedByDraft.includes(p);
-                    const displayName = p === currentUser?.id ? 'Me' : getUserNameFromId(p) || p;
+                    const displayName = p === currentUser?.id ? (currentUser?.name || 'Me') : getUserNameFromId(p) || p;
                     return (
                       <TouchableOpacity
                         key={p}
