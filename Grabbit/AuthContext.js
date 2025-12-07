@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useRef, useState, useContext } from 'react';
+import React, { createContext, useEffect, useState, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SERVER_URL } from './config';
 
@@ -9,7 +9,6 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const loadingTimeout = useRef(null);
 
   // Load user on start - auto-login Bob if no user is saved
   useEffect(() => {
@@ -23,11 +22,9 @@ export const AuthProvider = ({ children }) => {
           if (user.id === 'alice' && user.email === 'alice@example.com') {
             user.email = 'alice@grabbit.com';
             await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(user));
-            console.log('[Auth] Migrated Alice email to alice@grabbit.com');
           } else if (user.id === 'bob' && user.email === 'bob@example.com') {
             user.email = 'bob@grabbit.com';
             await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(user));
-            console.log('[Auth] Migrated Bob email to bob@grabbit.com');
           }
           
           setCurrentUser(user);
@@ -51,7 +48,6 @@ export const AuthProvider = ({ children }) => {
           });
         }
       } catch (err) {
-        console.log('[Auth] Failed to load user:', err.message);
         // Fallback: auto-login Bob even on error
         const defaultUser = {
           id: 'bob',
@@ -65,10 +61,6 @@ export const AuthProvider = ({ children }) => {
       }
     };
     load();
-
-    return () => {
-      if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
-    };
   }, []);
 
   const registerUserWithBackend = async (user) => {
@@ -101,13 +93,9 @@ export const AuthProvider = ({ children }) => {
         phone: userData.phone || '',
       };
 
-      console.log('[Auth] Logging in user:', user.name);
-
       // Save locally first (don't wait for backend)
       setCurrentUser(user);
       await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(user));
-      
-      console.log('[Auth] User saved locally, currentUser set');
       
       // Register with backend in background (non-blocking)
       registerUserWithBackend(user).catch(err => {
@@ -126,7 +114,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await AsyncStorage.removeItem(AUTH_KEY);
     } catch (err) {
-      console.log('[Auth] Failed to clear user:', err.message);
+      // Failed to clear user
     }
   };
 
@@ -152,7 +140,6 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
-      console.log('[Auth] Switching account to:', newUser.name);
       setCurrentUser(newUser);
       await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(newUser));
       

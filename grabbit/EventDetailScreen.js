@@ -18,6 +18,7 @@ import { io } from 'socket.io-client';
 
 import { globalStyles, colors, fonts } from './styles/styles.js';
 import { detailStyles } from './styles/eventDetailStyles.js';
+import { alertStyles } from './styles/alertStyles.js';
 import { EventContext } from './EventContext';
 import { useAuth } from './AuthContext';
 import { SERVER_URL } from './config';
@@ -57,7 +58,6 @@ export default function EventDetailScreen({ route, navigation }) {
     if (!event) {
       // Event doesn't exist in context - might have been removed
       // Redirect to home screen
-      console.log('[EventDetailScreen] Event not found in context, redirecting to home');
       navigation.navigate('HomeList');
       return;
     }
@@ -69,7 +69,6 @@ export default function EventDetailScreen({ route, navigation }) {
     
     if (!userIsParticipant) {
       // User is no longer a participant - redirect to home screen
-      console.log('[EventDetailScreen] User no longer has access to event, redirecting to home');
       Alert.alert(
         'Access Removed',
         'You no longer have access to this event.',
@@ -100,6 +99,22 @@ export default function EventDetailScreen({ route, navigation }) {
   const [sharedByEditItemId, setSharedByEditItemId] = useState(null);
   const [sharedByDraft, setSharedByDraft] = useState([]);
   const [sharedByModalVisible, setSharedByModalVisible] = useState(false);
+
+  // settle confirmation modal
+  const [settleModalVisible, setSettleModalVisible] = useState(false);
+
+  // remove participants confirmation modal
+  const [removeParticipantsModalVisible, setRemoveParticipantsModalVisible] = useState(false);
+  const [participantsToRemove, setParticipantsToRemove] = useState([]);
+  const [newParticipantsAfterRemove, setNewParticipantsAfterRemove] = useState([]);
+
+  // unsettled balance alert modal
+  const [unsettledBalanceModalVisible, setUnsettledBalanceModalVisible] = useState(false);
+  const [unsettledBalanceMessage, setUnsettledBalanceMessage] = useState('');
+
+  // uncheck bought item confirmation modal
+  const [uncheckItemModalVisible, setUncheckItemModalVisible] = useState(false);
+  const [itemToUncheck, setItemToUncheck] = useState(null);
 
   const [items, setItems] = useState(
     initialItems && Array.isArray(initialItems)
@@ -199,7 +214,6 @@ export default function EventDetailScreen({ route, navigation }) {
 
     // Disconnect existing socket if any
     if (socketRef.current) {
-      console.log('[EventDetailScreen] Disconnecting old socket before reconnecting...');
       socketRef.current.disconnect();
       socketRef.current = null;
     }
@@ -211,11 +225,11 @@ export default function EventDetailScreen({ route, navigation }) {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('[EventDetailScreen] Socket connected for event:', eventId, 'userId:', currentUser?.id);
+      // Socket connected
     });
     
     socket.on('disconnect', () => {
-      console.log('[EventDetailScreen] Socket disconnected for event:', eventId);
+      // Socket disconnected
     });
     
     socket.on('connect_error', (error) => {
@@ -229,7 +243,6 @@ export default function EventDetailScreen({ route, navigation }) {
       // Only process deletions for this event
       if (deletedEventId !== eventId) return;
       
-      console.log('[EventDetailScreen] Event was deleted by another user, redirecting to home');
       Alert.alert(
         'Event Deleted',
         'This event has been deleted.',
@@ -249,25 +262,9 @@ export default function EventDetailScreen({ route, navigation }) {
 
       // Debounce: only process if this update is newer than the last one we processed
       if (serverTs && serverTs <= lastUpdateTimestampRef.current) {
-        console.log('[EventDetailScreen] Ignoring stale update');
         return;
       }
       lastUpdateTimestampRef.current = serverTs || Date.now();
-
-      console.log('[EventDetailScreen] Received real-time update for event:', eventId);
-      console.log('[EventDetailScreen] Update from user:', fromUserId, 'items count:', eventData.items?.length || 0);
-      
-      // Log claimed items for debugging
-      if (eventData.items && Array.isArray(eventData.items)) {
-        const claimedItems = eventData.items.filter(item => item.claimedBy);
-        if (claimedItems.length > 0) {
-          console.log('[EventDetailScreen] Received items with claims:', claimedItems.map(item => ({
-            id: item.id,
-            name: item.name,
-            claimedBy: item.claimedBy
-          })));
-        }
-      }
 
       // Update items immediately (remove debounce for real-time feel)
       if (eventData.items && Array.isArray(eventData.items)) {
@@ -278,19 +275,40 @@ export default function EventDetailScreen({ route, navigation }) {
         
         // Update immediately for real-time updates
         setItems(prevItems => {
+          // Normalize sharedBy in received items to match participant ID format
+          // This handles cases where sharedBy contains names but participants are IDs
+          const normalizedItems = eventData.items.map(item => {
+            if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
+              // Normalize each sharedBy value to match participant format
+              const normalizedSharedBy = item.sharedBy.map(idOrName => {
+                // Find matching participant ID (case-insensitive)
+                const matched = participants.find(p => 
+                  normalizeUserId(p) === normalizeUserId(idOrName)
+                );
+                return matched || idOrName;
+              }).filter(Boolean);
+              
+              return {
+                ...item,
+                sharedBy: normalizedSharedBy.length > 0 ? normalizedSharedBy : item.sharedBy
+              };
+            }
+            return item;
+          });
+          
+          // Deep compare to check if items actually changed
           const prevStr = JSON.stringify(prevItems);
-          const newStr = JSON.stringify(eventData.items);
+          const newStr = JSON.stringify(normalizedItems);
           if (prevStr !== newStr) {
-            console.log('[EventDetailScreen] Updated items from real-time sync');
             // Set flag to prevent persist effect from running
             isApplyingRemoteUpdateRef.current = true;
             // Clear flag after a delay to allow next update
             setTimeout(() => {
               isApplyingRemoteUpdateRef.current = false;
             }, 500);
-            return eventData.items;
+            // Return the normalized items
+            return normalizedItems;
           }
-          console.log('[EventDetailScreen] Items unchanged, skipping update');
           return prevItems;
         });
       }
@@ -308,7 +326,6 @@ export default function EventDetailScreen({ route, navigation }) {
             const prevStr = JSON.stringify(prevParticipants);
             const newStr = JSON.stringify(eventData.participants);
             if (prevStr !== newStr) {
-              console.log('[EventDetailScreen] Updated participants from real-time sync');
               // Set flag to prevent persist effect from running
               isApplyingRemoteUpdateRef.current = true;
               // Clear flag after a delay to allow next update
@@ -355,15 +372,34 @@ export default function EventDetailScreen({ route, navigation }) {
     contextSyncTimeoutRef.current = setTimeout(() => {
       // Only sync if the context event has newer data
       if (contextEvent.items && Array.isArray(contextEvent.items)) {
+        // Normalize sharedBy in context items to match participant ID format
+        const normalizedContextItems = contextEvent.items.map(item => {
+          if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
+            // Normalize each sharedBy value to match participant format
+            const normalizedSharedBy = item.sharedBy.map(idOrName => {
+              // Find matching participant ID (case-insensitive)
+              const matched = participants.find(p => 
+                normalizeUserId(p) === normalizeUserId(idOrName)
+              );
+              return matched || idOrName;
+            }).filter(Boolean);
+            
+            return {
+              ...item,
+              sharedBy: normalizedSharedBy.length > 0 ? normalizedSharedBy : item.sharedBy
+            };
+          }
+          return item;
+        });
+        
         // Check if items are different
-        const contextItemsStr = JSON.stringify(contextEvent.items);
+        const contextItemsStr = JSON.stringify(normalizedContextItems);
         const localItemsStr = JSON.stringify(items);
         
         if (contextItemsStr !== localItemsStr) {
-          console.log('[EventDetailScreen] Syncing items from EventContext');
           // Set flag to prevent persist effect from running
           isApplyingRemoteUpdateRef.current = true;
-          setItems(contextEvent.items);
+          setItems(normalizedContextItems);
           // Clear flag after a delay
           setTimeout(() => {
             isApplyingRemoteUpdateRef.current = false;
@@ -376,7 +412,6 @@ export default function EventDetailScreen({ route, navigation }) {
         const localParticipantsStr = JSON.stringify(participants);
         
         if (contextParticipantsStr !== localParticipantsStr) {
-          console.log('[EventDetailScreen] Syncing participants from EventContext');
           // Set flag to prevent persist effect from running
           isApplyingRemoteUpdateRef.current = true;
           setParticipants(contextEvent.participants);
@@ -463,7 +498,6 @@ export default function EventDetailScreen({ route, navigation }) {
       
       // Skip items where the buyer is not in the current participants list
       if (!buyer || !isParticipant(buyer)) {
-        console.log(`[Split] Skipping item "${item.name}" - buyer "${buyer}" is not in participants`);
         return;
       }
       
@@ -489,7 +523,6 @@ export default function EventDetailScreen({ route, navigation }) {
       
       // Skip if no valid sharers remain
       if (sharers.length === 0) {
-        console.log(`[Split] Skipping item "${item.name}" - no valid sharers after filtering`);
         return;
       }
       
@@ -505,7 +538,6 @@ export default function EventDetailScreen({ route, navigation }) {
       sharers.forEach(person => {
         // Skip if person is not in participants (shouldn't happen after filtering, but safety check)
         if (!isParticipant(person)) {
-          console.log(`[Split] Skipping sharer "${person}" - not in participants`);
           return;
         }
         
@@ -523,9 +555,6 @@ export default function EventDetailScreen({ route, navigation }) {
       if (bal < -0.01) debtors.push({ person, amount: -bal });
       if (bal > 0.01) creditors.push({ person, amount: bal });
     });
-
-    console.log('[Split] Debtors:', debtors);
-    console.log('[Split] Creditors:', creditors);
 
     debtors.sort((a, b) => b.amount - a.amount);
     creditors.sort((a, b) => b.amount - a.amount);
@@ -553,9 +582,6 @@ export default function EventDetailScreen({ route, navigation }) {
       if (debtor.amount <= 0.01) d++;
       if (creditor.amount <= 0.01) c++;
     }
-
-    console.log('[Split] Final transactions:', transactions);
-    console.log('[Split] Final balances:', balances);
 
     return { balances, transactions, totalSpent: totalSpent.toFixed(2) };
   }, [items, participants, currentUser?.id, contextFriends]);
@@ -596,8 +622,17 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const handleSettle = () => {
     if (isReadOnly) return showArchivedAlert();
+    setSettleModalVisible(true);
+  };
+
+  const confirmSettle = () => {
     setItems(current => current.filter(item => !item.bought));
     setHasSettled(true);
+    setSettleModalVisible(false);
+  };
+
+  const cancelSettle = () => {
+    setSettleModalVisible(false);
   };
 
   const handleAddItem = () => {
@@ -623,8 +658,12 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const toggleSharePersonInDropdown = id => {
     setBuySharedBy(prev => {
-      const isSelected = prev.includes(id);
-      let next = isSelected ? prev.filter(n => n !== id) : [...prev, id];
+      // Use case-insensitive comparison to handle ID/name mismatches
+      const normalizedId = id?.toLowerCase();
+      const isSelected = prev.some(p => normalizeUserId(p) === normalizedId);
+      let next = isSelected 
+        ? prev.filter(n => normalizeUserId(n) !== normalizedId)
+        : [...prev, id];
       if (next.length === 0) next = [currentUser?.id].filter(Boolean); // never empty
       return next;
     });
@@ -641,20 +680,34 @@ export default function EventDetailScreen({ route, navigation }) {
       setShareDropdownVisible(false);
       setBuyModalVisible(true);
     } else {
-      setItems(current =>
-        current.map(it =>
-          it.id === item.id
-            ? {
-                ...it,
-                bought: false,
-                price: null,
-                claimedBy: null,
-                sharedBy: undefined,
-              }
-            : it
-        )
-      );
+      // Show confirmation before unchecking a bought item
+      setItemToUncheck(item);
+      setUncheckItemModalVisible(true);
     }
+  };
+
+  const confirmUncheckItem = () => {
+    if (!itemToUncheck) return;
+    setItems(current =>
+      current.map(it =>
+        it.id === itemToUncheck.id
+          ? {
+              ...it,
+              bought: false,
+              price: null,
+              claimedBy: null,
+              sharedBy: undefined,
+            }
+          : it
+      )
+    );
+    setUncheckItemModalVisible(false);
+    setItemToUncheck(null);
+  };
+
+  const cancelUncheckItem = () => {
+    setUncheckItemModalVisible(false);
+    setItemToUncheck(null);
   };
 
   // Helper function to format price to 2 decimal places
@@ -693,25 +746,45 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const handleBuyConfirm = () => {
-    if (isReadOnly) return showArchivedAlert();
-    if (selectedItem) {
-      setItems(current =>
-        current.map(item =>
-          item.id === selectedItem.id
-            ? {
-                ...item,
-                bought: true,
-                price: formatPrice(priceInput),
-                claimedBy: currentUser?.id || null,
-                sharedBy: buySharedBy.length > 0 ? buySharedBy : [currentUser?.id].filter(Boolean),
-              }
-            : item
-        )
-      );
+    if (isReadOnly) {
+      showArchivedAlert();
+      return;
     }
+    if (!selectedItem) {
+      return;
+    }
+    
+    // Normalize buySharedBy IDs to match participant format
+    const normalizedSharedBy = buySharedBy.map(id => {
+      // Find matching participant ID (case-insensitive)
+      const matched = participants.find(p => normalizeUserId(p) === normalizeUserId(id));
+      return matched || id;
+    }).filter(Boolean);
+    
+    const finalSharedBy = normalizedSharedBy.length > 0 
+      ? normalizedSharedBy 
+      : [currentUser?.id].filter(Boolean);
+    
+    const formattedPrice = formatPrice(priceInput);
+    
+    setItems(current => {
+      const updated = current.map(item =>
+        item.id === selectedItem.id
+          ? {
+              ...item,
+              bought: true,
+              price: formattedPrice,
+              claimedBy: currentUser?.id || null,
+              sharedBy: finalSharedBy,
+            }
+          : item
+      );
+      return updated;
+    });
     setBuyModalVisible(false);
     setPriceInput('');
     setSelectedItem(null);
+    setShareDropdownVisible(false);
   };
 
   // --- EDIT sharedBy FOR RECENT ITEMS (modal) ---
@@ -745,11 +818,12 @@ export default function EventDetailScreen({ route, navigation }) {
   const confirmEditSharedBy = () => {
     if (sharedByEditItemId == null) return;
     const cleaned = sharedByDraft.length ? sharedByDraft : [currentUser?.id].filter(Boolean);
-    setItems(current =>
-      current.map(item =>
+    setItems(current => {
+      const updated = current.map(item =>
         item.id === sharedByEditItemId ? { ...item, sharedBy: cleaned } : item
-      )
-    );
+      );
+      return updated;
+    });
     setSharedByEditItemId(null);
     setSharedByDraft([]);
     setSharedByModalVisible(false);
@@ -898,126 +972,26 @@ export default function EventDetailScreen({ route, navigation }) {
     setTempParticipants([]);
   };
 
-  const confirmParticipantsSelection = async () => {
-    // New participant list: current user + whatever was selected (all IDs)
-    // Deduplicate to prevent adding the same participant twice
-    const allParticipants = [currentUser?.id, ...tempParticipants].filter(Boolean);
-    const newParticipants = [...new Set(allParticipants.map(id => id.toLowerCase()))];
-    
-    // Check if any participants are being removed (case-insensitive comparison)
-    const currentUserLower = currentUser?.id?.toLowerCase();
-    const newParticipantsLower = newParticipants.map(p => p?.toLowerCase());
-    const removedParticipants = participants.filter(
-      p => {
-        const pLower = p?.toLowerCase();
-        return pLower !== currentUserLower && !newParticipantsLower.includes(pLower);
-      }
-    );
-    
-    // If someone is being removed, show confirmation dialog
-    if (removedParticipants.length > 0) {
-      const removedNames = removedParticipants.map(id => getUserNameFromId(id) || id).join(', ');
-      Alert.alert(
-        'Remove Participants?',
-        `Are you sure you want to remove ${removedNames} from this event? They will no longer have access to it.`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              // Reset temp participants to current state
-              const currentFriends = participants.filter(id => id !== currentUser?.id);
-              setTempParticipants(currentFriends);
-            },
-          },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                // Update participants state
-                setParticipants(newParticipants);
-                
-                // Clean up all items so sharedBy/claimedBy never reference removed people
-                setItems(currentItems =>
-                  currentItems.map(item => {
-                    const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
-            
-                    // Keep only sharers that are still in the event
-                    const cleanedSharedBy = currentSharers.filter(id =>
-                      newParticipants.includes(id)
-                    );
-            
-                    // If claimedBy has been removed, fall back to current user
-                    let cleanedClaimedBy = item.claimedBy;
-                    if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
-                      cleanedClaimedBy = currentUser?.id || null;
-                    }
-                    
-                    // If sharedBy becomes empty after cleaning and item is bought, 
-                    // default to the buyer (or current user if buyer was removed)
-                    let finalSharedBy = cleanedSharedBy;
-                    if (item.bought && finalSharedBy.length === 0) {
-                      finalSharedBy = [cleanedClaimedBy || currentUser?.id].filter(Boolean);
-                    }
-            
-                    return {
-                      ...item,
-                      sharedBy: finalSharedBy,
-                      claimedBy: cleanedClaimedBy,
-                    };
-                  })
-                );
-                
-                // Also clean the current selection used in the buy modal
-                setBuySharedBy(prev => {
-                  const filtered = prev.filter(id => newParticipants.includes(id));
-                  return filtered.length ? filtered : [currentUser?.id].filter(Boolean);
-                });
-                
-                // Sync with backend via EventContext
-                if (ctxUpdateParticipants && eventId) {
-                  await ctxUpdateParticipants(eventId, newParticipants);
-                }
-                
-                setParticipantsModalVisible(false);
-                setTempParticipants([]);
-              } catch (error) {
-                console.error('[EventDetailScreen] Error removing participants:', error);
-                Alert.alert(
-                  'Error',
-                  'Failed to remove participants. Please try again.',
-                  [{ text: 'OK' }]
-                );
-                // Reset temp participants to current state on error
-                const currentFriends = participants.filter(id => id !== currentUser?.id);
-                setTempParticipants(currentFriends);
-              }
-            },
-          },
-        ]
-      );
-      return;
-    }
-    
-    // No participants removed, proceed with update
+  const confirmRemoveParticipants = async () => {
     try {
       // Update participants state
-      setParticipants(newParticipants);
+      setParticipants(newParticipantsAfterRemove);
       
       // Clean up all items so sharedBy/claimedBy never reference removed people
+      // Use case-insensitive comparison since newParticipantsAfterRemove contains lowercase IDs
+      const newParticipantsAfterRemoveLower = newParticipantsAfterRemove.map(p => p.toLowerCase());
       setItems(currentItems =>
         currentItems.map(item => {
           const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
   
-          // Keep only sharers that are still in the event
+          // Keep only sharers that are still in the event (case-insensitive)
           const cleanedSharedBy = currentSharers.filter(id =>
-            newParticipants.includes(id)
+            newParticipantsAfterRemoveLower.includes(id?.toLowerCase())
           );
   
-          // If claimedBy has been removed, fall back to current user
+          // If claimedBy has been removed, fall back to current user (case-insensitive)
           let cleanedClaimedBy = item.claimedBy;
-          if (cleanedClaimedBy && !newParticipants.includes(cleanedClaimedBy)) {
+          if (cleanedClaimedBy && !newParticipantsAfterRemoveLower.includes(cleanedClaimedBy?.toLowerCase())) {
             cleanedClaimedBy = currentUser?.id || null;
           }
           
@@ -1036,9 +1010,214 @@ export default function EventDetailScreen({ route, navigation }) {
         })
       );
       
-      // Also clean the current selection used in the buy modal
+      // Also clean the current selection used in the buy modal (case-insensitive)
       setBuySharedBy(prev => {
-        const filtered = prev.filter(name => newParticipants.includes(name));
+        const filtered = prev.filter(id => 
+          newParticipantsAfterRemoveLower.includes(id?.toLowerCase())
+        );
+        return filtered.length ? filtered : [currentUser?.id].filter(Boolean);
+      });
+      
+      // Sync with backend via EventContext
+      if (ctxUpdateParticipants && eventId) {
+        await ctxUpdateParticipants(eventId, newParticipantsAfterRemove);
+      }
+      
+      setParticipantsModalVisible(false);
+      setTempParticipants([]);
+      setRemoveParticipantsModalVisible(false);
+      setParticipantsToRemove([]);
+      setNewParticipantsAfterRemove([]);
+    } catch (error) {
+      console.error('[EventDetailScreen] Error removing participants:', error);
+      Alert.alert(
+        'Error',
+        'Failed to remove participants. Please try again.',
+        [{ text: 'OK' }]
+      );
+      // Reset temp participants to current state on error
+      const currentFriends = participants.filter(id => id !== currentUser?.id);
+      setTempParticipants(currentFriends);
+      setRemoveParticipantsModalVisible(false);
+      setParticipantsToRemove([]);
+      setNewParticipantsAfterRemove([]);
+    }
+  };
+
+  const cancelRemoveParticipants = () => {
+    // Reset temp participants to current state
+    const currentFriends = participants.filter(id => id !== currentUser?.id);
+    setTempParticipants(currentFriends);
+    setRemoveParticipantsModalVisible(false);
+    setParticipantsToRemove([]);
+    setNewParticipantsAfterRemove([]);
+  };
+
+  // Helper function to calculate balances for participants
+  const calculateParticipantBalances = () => {
+    const balances = {};
+    participants.forEach(p => (balances[p] = 0));
+
+    // Filter bought items to only include those with valid buyers in participants
+    const bought = items.filter(item => {
+      if (!item.bought || !item.price || parseFloat(item.price) <= 0) return false;
+      const buyer = item.claimedBy || currentUser?.id;
+      return buyer && isParticipant(buyer);
+    });
+
+    bought.forEach(item => {
+      const price = parseFloat(item.price);
+      const buyer = item.claimedBy || currentUser?.id;
+      
+      // Skip items where the buyer is not in the current participants list
+      if (!buyer || !isParticipant(buyer)) {
+        return;
+      }
+      
+      // Normalize buyer to participant ID format for balance tracking
+      const normalizedBuyer = participants.find(p => normalizeUserId(p) === normalizeUserId(buyer)) || buyer;
+      
+      // Get sharers, filtering to only include current participants (case-insensitive)
+      let rawSharers = [];
+      if (Array.isArray(item.sharedBy) && item.sharedBy.length > 0) {
+        rawSharers = item.sharedBy
+          .filter(id => isParticipant(id))
+          .map(id => participants.find(p => normalizeUserId(p) === normalizeUserId(id)) || id);
+      }
+      
+      // If no valid sharers after filtering, default to buyer only
+      if (rawSharers.length === 0) {
+        rawSharers = [normalizedBuyer];
+      }
+      
+      // Filter sharers to only include current participants
+      const sharers = rawSharers.filter(s => isParticipant(s));
+      
+      // Skip if no valid sharers remain
+      if (sharers.length === 0) {
+        return;
+      }
+      
+      const perPerson = price / sharers.length;
+
+      // Ensure buyer has balance entry
+      if (!balances[normalizedBuyer]) balances[normalizedBuyer] = 0;
+      
+      // Credit the buyer for the full amount they paid
+      balances[normalizedBuyer] += price;
+      
+      // Debit each sharer for their share
+      sharers.forEach(person => {
+        if (!isParticipant(person)) {
+          return;
+        }
+        
+        const normalizedPerson = participants.find(p => normalizeUserId(p) === normalizeUserId(person)) || person;
+        
+        if (!balances[normalizedPerson]) balances[normalizedPerson] = 0;
+        balances[normalizedPerson] -= perPerson;
+      });
+    });
+
+    return balances;
+  };
+
+  const confirmParticipantsSelection = async () => {
+    // New participant list: current user + whatever was selected (all IDs)
+    // Deduplicate to prevent adding the same participant twice
+    const allParticipants = [currentUser?.id, ...tempParticipants].filter(Boolean);
+    const newParticipants = [...new Set(allParticipants.map(id => id.toLowerCase()))];
+    
+    // Check if any participants are being removed (case-insensitive comparison)
+    const currentUserLower = currentUser?.id?.toLowerCase();
+    const newParticipantsLower = newParticipants.map(p => p?.toLowerCase());
+    const removedParticipants = participants.filter(
+      p => {
+        const pLower = p?.toLowerCase();
+        return pLower !== currentUserLower && !newParticipantsLower.includes(pLower);
+      }
+    );
+    
+    // If someone is being removed, check if they are part of any item's sharedBy
+    if (removedParticipants.length > 0) {
+      // Check if any removed participant is in any item's sharedBy array
+      const participantsInSharedBy = removedParticipants.filter(p => {
+        const pLower = p?.toLowerCase();
+        // Check all items to see if this participant is in any sharedBy
+        return items.some(item => {
+          if (!item.bought) return false; // Only check bought items
+          const sharedBy = Array.isArray(item.sharedBy) ? item.sharedBy : [];
+          // Check if participant is in sharedBy (case-insensitive)
+          return sharedBy.some(sharer => 
+            normalizeUserId(sharer) === normalizeUserId(p)
+          );
+        });
+      });
+      
+      if (participantsInSharedBy.length > 0) {
+        // Show alert and prevent removal
+        const participantNames = participantsInSharedBy
+          .map(id => getUserNameFromId(id) || id)
+          .join(', ');
+        setUnsettledBalanceMessage(`You can't remove ${participantNames} because they are sharing items in this event.`);
+        // Close participants modal first, then show unsettled balance alert
+        setParticipantsModalVisible(false);
+        setUnsettledBalanceModalVisible(true);
+        return;
+      }
+      
+      // No unsettled balances, proceed with removal confirmation
+      setParticipantsToRemove(removedParticipants);
+      setNewParticipantsAfterRemove(newParticipants);
+      // Close participants modal first, then show remove confirmation modal
+      setParticipantsModalVisible(false);
+      setRemoveParticipantsModalVisible(true);
+      return;
+    }
+    
+    // No participants removed, proceed with update
+    try {
+      // Update participants state
+      setParticipants(newParticipants);
+      
+      // Clean up all items so sharedBy/claimedBy never reference removed people
+      // Use case-insensitive comparison since newParticipants contains lowercase IDs
+      const newParticipantsLower = newParticipants.map(p => p.toLowerCase());
+      setItems(currentItems =>
+        currentItems.map(item => {
+          const currentSharers = Array.isArray(item.sharedBy) ? item.sharedBy : [];
+  
+          // Keep only sharers that are still in the event (case-insensitive)
+          const cleanedSharedBy = currentSharers.filter(id =>
+            newParticipantsLower.includes(id?.toLowerCase())
+          );
+  
+          // If claimedBy has been removed, fall back to current user (case-insensitive)
+          let cleanedClaimedBy = item.claimedBy;
+          if (cleanedClaimedBy && !newParticipantsLower.includes(cleanedClaimedBy?.toLowerCase())) {
+            cleanedClaimedBy = currentUser?.id || null;
+          }
+          
+          // If sharedBy becomes empty after cleaning and item is bought, 
+          // default to the buyer (or current user if buyer was removed)
+          let finalSharedBy = cleanedSharedBy;
+          if (item.bought && finalSharedBy.length === 0) {
+            finalSharedBy = [cleanedClaimedBy || currentUser?.id].filter(Boolean);
+          }
+  
+          return {
+            ...item,
+            sharedBy: finalSharedBy,
+            claimedBy: cleanedClaimedBy,
+          };
+        })
+      );
+      
+      // Also clean the current selection used in the buy modal (case-insensitive)
+      setBuySharedBy(prev => {
+        const filtered = prev.filter(id => 
+          newParticipantsLower.includes(id?.toLowerCase())
+        );
         return filtered.length ? filtered : [currentUser?.id].filter(Boolean);
       });
       
@@ -1438,11 +1617,6 @@ export default function EventDetailScreen({ route, navigation }) {
       return name.charAt(0).toUpperCase();
     };
     
-    // Debug: log balances and transactions
-    console.log('[SplitTab] Balances:', splitData.balances);
-    console.log('[SplitTab] Transactions:', splitData.transactions);
-    console.log('[SplitTab] Total spent:', splitData.totalSpent);
-    
     // If there are transactions, always show them
     if (splitData.transactions.length > 0) {
       // Show transactions below
@@ -1554,7 +1728,6 @@ export default function EventDetailScreen({ route, navigation }) {
   const effectiveFriends = useMemo(() => {
     if (!contextFriends || contextFriends.length === 0) {
       // If no friends from backend, return empty array (shouldn't happen if backend is working)
-      console.warn('[EventDetailScreen] No friends available from backend');
       return [];
     }
     
@@ -1692,15 +1865,17 @@ export default function EventDetailScreen({ route, navigation }) {
             <View>
               <View style={detailStyles.sharedByRow}>
                 {buySharedBy.map(id => {
-                  const name = getUserNameFromId(id);
-                  const userColors = getUserColors(id);
+                  // Normalize ID for consistent lookup
+                  const normalizedId = participants.find(p => normalizeUserId(p) === normalizeUserId(id)) || id;
+                  const name = getUserNameFromId(normalizedId);
+                  const userColors = getUserColors(normalizedId);
                   return (
                     <View
                       key={id}
                       style={[detailStyles.avatarSmall, { marginRight: 6, backgroundColor: userColors.backgroundColor }]}
                     >
                       <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
-                        {getUserInitial(id, name)}
+                        {getUserInitial(normalizedId, name)}
                       </Text>
                     </View>
                   );
@@ -1720,7 +1895,9 @@ export default function EventDetailScreen({ route, navigation }) {
               {shareDropdownVisible && (
                 <View style={detailStyles.shareDropdown}>
                   {participants.map(p => {
-                    const isSelected = buySharedBy.includes(p);
+                    // Use case-insensitive comparison to handle ID/name mismatches
+                    const normalizedP = normalizeUserId(p);
+                    const isSelected = buySharedBy.some(b => normalizeUserId(b) === normalizedP);
                     const displayName = p === currentUser?.id ? (currentUser?.name || 'Me') : getUserNameFromId(p) || p;
                     return (
                       <TouchableOpacity
@@ -2122,6 +2299,162 @@ export default function EventDetailScreen({ route, navigation }) {
                 </View>
               </View>
             </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* SETTLE CONFIRMATION MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={settleModalVisible}
+        onRequestClose={cancelSettle}
+      >
+        <TouchableWithoutFeedback onPress={cancelSettle}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={alertStyles.alertModalContainer}>
+                  <Text style={alertStyles.alertModalTitle}>Settle Up</Text>
+                  <Text style={alertStyles.alertModalMessage}>
+                    This will remove all bought items from the list. This action cannot be undone. Only do this if you confirm that the finance is settled. Are you sure you want to continue?
+                  </Text>
+                  <View style={alertStyles.alertModalActions}>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalCancelBtn}
+                      onPress={cancelSettle}
+                    >
+                      <FontAwesome5 name="times" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalConfirmBtn}
+                      onPress={confirmSettle}
+                    >
+                      <FontAwesome5 name="check" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* REMOVE PARTICIPANTS CONFIRMATION MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={removeParticipantsModalVisible}
+        onRequestClose={cancelRemoveParticipants}
+      >
+        <TouchableWithoutFeedback onPress={cancelRemoveParticipants}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={alertStyles.alertModalContainer}>
+                  <Text style={alertStyles.alertModalTitle}>Remove Participants?</Text>
+                  <Text style={alertStyles.alertModalMessage}>
+                    {participantsToRemove.length > 0
+                      ? `Are you sure you want to remove ${participantsToRemove.map(id => getUserNameFromId(id) || id).join(', ')} from this event? They will no longer have access to it.`
+                      : 'Are you sure you want to remove these participants from this event? They will no longer have access to it.'}
+                  </Text>
+                  <View style={alertStyles.alertModalActions}>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalCancelBtn}
+                      onPress={cancelRemoveParticipants}
+                    >
+                      <FontAwesome5 name="times" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalConfirmBtn}
+                      onPress={confirmRemoveParticipants}
+                    >
+                      <FontAwesome5 name="check" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* UNSETTLED BALANCE ALERT MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={unsettledBalanceModalVisible}
+        onRequestClose={() => setUnsettledBalanceModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setUnsettledBalanceModalVisible(false)}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={alertStyles.alertModalContainer}>
+                  <Text style={alertStyles.alertModalTitle}>Cannot Remove Participant</Text>
+                  <Text style={alertStyles.alertModalMessage}>
+                    {unsettledBalanceMessage}
+                  </Text>
+                  <View style={alertStyles.alertModalActions}>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalConfirmBtn}
+                      onPress={() => setUnsettledBalanceModalVisible(false)}
+                    >
+                      <FontAwesome5 name="check" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* UNCHECK ITEM CONFIRMATION MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={uncheckItemModalVisible}
+        onRequestClose={cancelUncheckItem}
+      >
+        <TouchableWithoutFeedback onPress={cancelUncheckItem}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={alertStyles.alertModalContainer}>
+                  <Text style={alertStyles.alertModalTitle}>Uncheck Item</Text>
+                  <Text style={alertStyles.alertModalMessage}>
+                    {itemToUncheck && `Are you sure you want to uncheck "${itemToUncheck.name}"? This will remove the price and sharing information.`}
+                  </Text>
+                  <View style={alertStyles.alertModalActions}>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalCancelBtn}
+                      onPress={cancelUncheckItem}
+                    >
+                      <FontAwesome5 name="times" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalConfirmBtn}
+                      onPress={confirmUncheckItem}
+                    >
+                      <FontAwesome5 name="check" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
       </Modal>

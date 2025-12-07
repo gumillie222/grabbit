@@ -53,5 +53,3 @@ const getServerUrl = () => {
 
 export const SERVER_URL = getServerUrl();
 
-console.log(`[Config] Using server URL: ${SERVER_URL} (Platform: ${Platform.OS}, Device: ${Constants.deviceName || 'unknown'}, IsDevice: ${Constants.isDevice})`);
-

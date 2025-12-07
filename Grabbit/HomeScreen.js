@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { globalStyles, colors } from './styles/styles.js';
 import { homeStyles } from './styles/homeStyles.js';
+import { alertStyles } from './styles/alertStyles.js';
 import AddEventModal from './AddEventModal.js';
 import { EventContext } from './EventContext';
 import { useAuth } from './AuthContext';
@@ -44,7 +45,6 @@ export default function HomeScreen({ navigation }) {
   // Reload events when screen comes into focus (for real-time updates)
   useFocusEffect(
     React.useCallback(() => {
-      console.log('[HomeScreen] Screen focused, reloading events...');
       if (reloadEvents) {
         reloadEvents();
       }
@@ -197,20 +197,20 @@ export default function HomeScreen({ navigation }) {
               style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
             >
               <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={homeStyles.deleteModalContainer}>
-                  <Text style={homeStyles.deleteModalTitle}>Archive Event</Text>
-                  <Text style={homeStyles.deleteModalMessage}>
+                <View style={alertStyles.alertModalContainer}>
+                  <Text style={alertStyles.alertModalTitle}>Archive Event</Text>
+                  <Text style={alertStyles.alertModalMessage}>
                     Are you sure you want to archive this event? This event will be archived for all participants. You can unarchive it later from the archived events section.
                   </Text>
-                  <View style={homeStyles.deleteModalActions}>
+                  <View style={alertStyles.alertModalActions}>
                     <TouchableOpacity
-                      style={homeStyles.deleteModalCancelBtn}
+                      style={alertStyles.alertModalCancelBtn}
                       onPress={cancelArchive}
                     >
                       <FontAwesome5 name="times" size={16} color="#fff" />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={homeStyles.deleteModalConfirmBtn}
+                      style={alertStyles.alertModalConfirmBtn}
                       onPress={confirmArchive}
                     >
                       <FontAwesome5 name="check" size={16} color="#fff" />
@@ -237,20 +237,20 @@ export default function HomeScreen({ navigation }) {
               style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
             >
               <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={homeStyles.deleteModalContainer}>
-                  <Text style={homeStyles.deleteModalTitle}>Delete Event</Text>
-                  <Text style={homeStyles.deleteModalMessage}>
+                <View style={alertStyles.alertModalContainer}>
+                  <Text style={alertStyles.alertModalTitle}>Delete Event</Text>
+                  <Text style={alertStyles.alertModalMessage}>
                     Are you sure you want to delete this event? This action is IRREVERSIBLE. All items and participants will be permanently deleted.
                   </Text>
-                  <View style={homeStyles.deleteModalActions}>
+                  <View style={alertStyles.alertModalActions}>
                     <TouchableOpacity
-                      style={homeStyles.deleteModalCancelBtn}
+                      style={alertStyles.alertModalCancelBtn}
                       onPress={cancelDelete}
                     >
                       <FontAwesome5 name="times" size={16} color="#fff" />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={homeStyles.deleteModalConfirmBtn}
+                      style={alertStyles.alertModalConfirmBtn}
                       onPress={confirmDelete}
                     >
                       <FontAwesome5 name="check" size={16} color="#fff" />

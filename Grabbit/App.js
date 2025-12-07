@@ -33,8 +33,6 @@ const getTabBarVisibility = (route) => {
 };
 
 export default function App() {
-  const SERVER_URL = 'http://10.0.0.162';
-
   let [fontsLoaded] = useFonts({
     JosefinSans_300Light,
     JosefinSans_400Regular,
@@ -89,7 +87,7 @@ function AppNavigator() {
           display: getTabBarVisibility(route), 
         },
         tabBarIcon: ({ color, size }) => {
-          const map = { Home: 'home', Me: 'user-alt', Realtime: 'bolt' };
+          const map = { Home: 'home', Me: 'user-alt' };
           return <FontAwesome5 name={map[route.name]} size={size} color={color} />;
         },
         headerShown: route.name !== 'Home' && route.name !== 'Me',

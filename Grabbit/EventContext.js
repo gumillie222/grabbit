@@ -39,8 +39,6 @@ export const EventProvider = ({ children }) => {
 
     const loadFriendsFromBackend = async () => {
       try {
-        console.log('[EventContext] Loading friends from backend for user:', currentUser.id);
-        
         // Hardcode friends based on user name
         const userName = currentUser.name?.toLowerCase();
         let hardcodedFriends = [];
@@ -68,7 +66,6 @@ export const EventProvider = ({ children }) => {
         }
         
         setFriends(hardcodedFriends);
-        console.log('[EventContext] Loaded', hardcodedFriends.length, 'friends');
       } catch (err) {
         console.error('[EventContext] Failed to load friends from backend:', err);
         // Set empty friends on error
@@ -84,7 +81,6 @@ export const EventProvider = ({ children }) => {
     if (!currentUser?.id) return;
     
     try {
-      console.log('[EventContext] Reloading events from backend for user:', currentUser.id);
       const response = await api.getEvents(currentUser.id);
       const backendEvents = response.events || [];
       
@@ -115,7 +111,6 @@ export const EventProvider = ({ children }) => {
       // Keep refs in sync
       eventsRef.current = activeEvents;
       archivedEventsRef.current = archivedEventsList;
-      console.log('[EventContext] Reloaded', activeEvents.length, 'active events and', archivedEventsList.length, 'archived events');
       return [...activeEvents, ...archivedEventsList];
     } catch (err) {
       console.error('[EventContext] Failed to reload events from backend:', err);
@@ -147,7 +142,6 @@ export const EventProvider = ({ children }) => {
 
     // Disconnect existing socket if any
     if (socketRef.current) {
-      console.log('[EventContext] Disconnecting old socket before reconnecting...');
       socketRef.current.disconnect();
       socketRef.current = null;
     }
@@ -159,12 +153,11 @@ export const EventProvider = ({ children }) => {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('[EventContext] Socket connected for real-time updates');
+      // Socket connected
     });
 
     // Listen for friend accepted events to reload friends list
     socket.on('friend:accepted', () => {
-      console.log('[EventContext] Received friend:accepted signal, reloading friends...');
       const reloadFriends = async () => {
         if (!currentUser?.id) return;
         try {
@@ -195,7 +188,6 @@ export const EventProvider = ({ children }) => {
           }
           
           setFriends(hardcodedFriends);
-          console.log('[EventContext] Reloaded friends after friend:accepted');
         } catch (err) {
           console.error('[EventContext] Failed to reload friends:', err);
         }
@@ -205,13 +197,11 @@ export const EventProvider = ({ children }) => {
 
     // Listen for reload signal from server (when default events are created or shared)
     socket.on('events:reload', () => {
-      console.log('[EventContext] Received events:reload signal, reloading events...');
       // Use the shared reloadEvents function
       reloadEvents();
     });
 
     socket.on('event:delete', (payload) => {
-      console.log('[EventContext] Received event delete:', payload);
       const { eventId, fromUserId } = payload;
       
       if (fromUserId === currentUser.id) {
@@ -232,12 +222,10 @@ export const EventProvider = ({ children }) => {
     });
 
     socket.on('event:update', (payload) => {
-      console.log('[EventContext] Received event update:', payload);
       const { eventId, eventData, fromUserId } = payload;
       
       // Ignore our own updates (case-insensitive comparison)
       if (fromUserId && currentUser?.id && fromUserId.toLowerCase() === currentUser.id.toLowerCase()) {
-        console.log('[EventContext] Ignoring own update for event:', eventId);
         return;
       }
 
@@ -252,10 +240,6 @@ export const EventProvider = ({ children }) => {
       const isNowArchived = eventData.archived === true;
       const wasArchived = existingEvent?.archived === true;
       
-      // Log archive status changes for debugging
-      if (isNowArchived !== wasArchived) {
-        console.log(`[EventContext] Archive status changed for event ${eventId}: ${wasArchived} -> ${isNowArchived} (from user: ${fromUserId})`);
-      }
       
       // Build updated event
       const updatedEvent = existingEvent ? {
@@ -314,7 +298,6 @@ export const EventProvider = ({ children }) => {
     });
 
     return () => {
-      console.log('[EventContext] Cleaning up socket connection');
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -336,7 +319,7 @@ export const EventProvider = ({ children }) => {
         });
         await AsyncStorage.setItem(STORAGE_KEY, payload);
       } catch (err) {
-        console.log('[EventContext] Failed to save data:', err.message);
+        // Failed to save data
       }
     }, 300);
 
@@ -383,8 +366,6 @@ export const EventProvider = ({ children }) => {
         // sharedWith should be the same as participants (both are IDs now)
         const sharedWith = participantsWithUser;
         
-        console.log(`[EventContext] Creating event with participants (IDs): ${participantsWithUser.join(', ')}, sharedWith: ${sharedWith.join(', ')}`);
-        
         await api.saveEvent(currentUser.id, newEvent.id, {
           title: eventToAdd.title,
           items: eventToAdd.items,
@@ -429,16 +410,6 @@ export const EventProvider = ({ children }) => {
       try {
         const event = events.find(e => e.id === eventId) || archivedEvents.find(e => e.id === eventId);
         if (event) {
-          // Log items with sharedBy for debugging
-          const itemsWithSharedBy = updatedItems.filter(item => Array.isArray(item.sharedBy) && item.sharedBy.length > 0);
-          if (itemsWithSharedBy.length > 0) {
-            console.log(`[EventContext] Updating items with sharedBy:`, itemsWithSharedBy.map(item => ({
-              id: item.id,
-              name: item.name,
-              sharedBy: item.sharedBy
-            })));
-          }
-          
           // Send real-time update via socket FIRST for immediate updates
           // Don't send sharedWith - let server compute it from participants
           if (socketRef.current && socketRef.current.connected) {
@@ -451,27 +422,7 @@ export const EventProvider = ({ children }) => {
                 participants: event.participants || [],
               },
             };
-            console.log(`[EventContext] Emitting event:update IMMEDIATELY for event ${eventId} with ${updatedItems.length} items`);
-            // Log claimed items for debugging
-            const claimedItems = updatedItems.filter(item => item.claimedBy);
-            if (claimedItems.length > 0) {
-              console.log(`[EventContext] Items with claims:`, claimedItems.map(item => ({
-                id: item.id,
-                name: item.name,
-                claimedBy: item.claimedBy
-              })));
-            }
             socketRef.current.emit('event:update', payload);
-            console.log(`[EventContext] Sent event:update for event ${eventId} with ${updatedItems.length} items, participants: ${(event.participants || []).join(', ')}`);
-            if (itemsWithSharedBy.length > 0) {
-              console.log(`[EventContext] Socket update includes items with sharedBy:`, itemsWithSharedBy.map(item => ({
-                id: item.id,
-                name: item.name,
-                sharedBy: item.sharedBy
-              })));
-            }
-          } else {
-            console.warn(`[EventContext] Socket not connected, cannot send real-time update. Socket exists: ${!!socketRef.current}, Connected: ${socketRef.current?.connected}`);
           }
           
           // Persist to backend via REST API (in background, don't block)
@@ -572,7 +523,6 @@ export const EventProvider = ({ children }) => {
           socketRef.current.emit('event:delete', {
             eventId: id,
           });
-          console.log(`[EventContext] Sent event:delete for event ${id}`);
         }
       } catch (err) {
         console.error('[EventContext] Failed to delete event:', err);
@@ -623,9 +573,6 @@ export const EventProvider = ({ children }) => {
               participants: target.participants || [],
             },
           });
-          console.log(`[EventContext] Sent archive event:update for event ${id} (after successful persistence)`);
-        } else {
-          console.warn(`[EventContext] Socket not connected, cannot send real-time archive update for event ${id}`);
         }
       } catch (err) {
         console.error('[EventContext] Failed to persist archive to backend:', err);
@@ -677,9 +624,6 @@ export const EventProvider = ({ children }) => {
               participants: target.participants || [],
             },
           });
-          console.log(`[EventContext] Sent unarchive event:update for event ${id} (after successful persistence)`);
-        } else {
-          console.warn(`[EventContext] Socket not connected, cannot send real-time unarchive update for event ${id}`);
         }
       } catch (err) {
         console.error('[EventContext] Failed to persist unarchive to backend:', err);

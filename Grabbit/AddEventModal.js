@@ -131,9 +131,7 @@ export default function AddEventModal({
           setIsConnected(true);
         } catch (error) {
           if (error.name !== 'AbortError') {
-            console.log(
-              '[AddEventModal] Using fallback items (connection unavailable)'
-            );
+            // Connection unavailable, using fallback items
           }
 
           setIsConnected(false);
