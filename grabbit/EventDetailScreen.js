@@ -400,14 +400,28 @@ export default function EventDetailScreen({ route, navigation }) {
         const contextItemsStr = JSON.stringify(normalizedContextItems);
         const localItemsStr = JSON.stringify(items);
         
-        if (contextItemsStr !== localItemsStr) {
+        // IMPORTANT: Only sync from context if:
+        // 1. Items are different, AND
+        // 2. Local items have been persisted (match lastPersistedItemsRef) OR context items are newer
+        // This prevents overwriting unsaved local changes
+        const localItemsMatchPersisted = lastPersistedItemsRef.current === localItemsStr;
+        const shouldSync = contextItemsStr !== localItemsStr && localItemsMatchPersisted;
+        
+        if (shouldSync) {
+          console.log(`[EventDetailScreen] Syncing items from contextEvent for event ${eventId} (local items match persisted, safe to overwrite)`);
           // Set flag to prevent persist effect from running
           isApplyingRemoteUpdateRef.current = true;
           setItems(normalizedContextItems);
+          // Update lastPersistedItemsRef to match the new items (these came from server, so they're persisted)
+          lastPersistedItemsRef.current = contextItemsStr;
+          // Clear pending since these items are already persisted
+          pendingItemsRef.current = null;
           // Clear flag after a delay
           setTimeout(() => {
             isApplyingRemoteUpdateRef.current = false;
           }, 500);
+        } else if (contextItemsStr !== localItemsStr && !localItemsMatchPersisted) {
+          console.log(`[EventDetailScreen] Skipping context sync for event ${eventId} - local items have unsaved changes`);
         }
       }
 
@@ -434,6 +448,18 @@ export default function EventDetailScreen({ route, navigation }) {
     };
   }, [contextEvent, eventId, items, participants]);
 
+  // Initialize lastPersistedItemsRef with initial items on mount
+  useEffect(() => {
+    if (items && items.length >= 0 && lastPersistedItemsRef.current === null) {
+      const itemsStr = JSON.stringify(items);
+      lastPersistedItemsRef.current = itemsStr;
+      console.log(`[EventDetailScreen] Initialized lastPersistedItemsRef for event ${eventId} with ${items.length} items`);
+    }
+  }, []); // Only run on mount
+
+  // Track pending persistence to avoid duplicate saves
+  const pendingItemsRef = useRef(null);
+  
   // persist items (but skip if this update came from remote to avoid infinite loop)
   useEffect(() => {
     if (isReadOnly) return;
@@ -450,8 +476,32 @@ export default function EventDetailScreen({ route, navigation }) {
       return;
     }
     
-    lastPersistedItemsRef.current = itemsStr;
-    ctxUpdateItems(eventId, items);
+    // Check if we're already persisting these exact items
+    if (pendingItemsRef.current === itemsStr) {
+      // Already persisting this data, skip to avoid duplicate saves
+      console.log(`[EventDetailScreen] Already persisting items for event ${eventId}, skipping duplicate`);
+      return;
+    }
+    
+    console.log(`[EventDetailScreen] Persisting items update for event ${eventId} (${items.length} items)`);
+    
+    // Mark as pending BEFORE calling updateItems
+    pendingItemsRef.current = itemsStr;
+    
+    // Call updateItems and update ref only after it completes
+    // Note: updateItems is async, but we can't easily await in useEffect
+    // So we'll update the ref when we receive confirmation via socket update
+    // For now, we'll update it optimistically but track pending state
+    ctxUpdateItems(eventId, items).then(() => {
+      // Persistence completed successfully
+      lastPersistedItemsRef.current = itemsStr;
+      pendingItemsRef.current = null;
+      console.log(`[EventDetailScreen] Successfully persisted items for event ${eventId}`);
+    }).catch((err) => {
+      // Persistence failed - clear pending so we can retry
+      console.error(`[EventDetailScreen] Failed to persist items for event ${eventId}:`, err);
+      pendingItemsRef.current = null;
+    });
   }, [items, eventId, ctxUpdateItems, isReadOnly]);
 
   // persist participants (but skip if this update came from remote to avoid infinite loop)

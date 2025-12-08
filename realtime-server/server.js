@@ -229,10 +229,18 @@ io.on("connection", (socket) => {
       const normalizedParticipants = [...new Set(participants.map(p => p?.toLowerCase()).filter(Boolean))];
       const normalizedSharedWith = [...new Set(sharedWith.map(s => s?.toLowerCase()).filter(Boolean))];
       
+      // IMPORTANT: Explicitly preserve items from eventData to ensure they're saved
+      const items = eventData.items !== undefined ? eventData.items : (eventToUpdate.items || []);
+      console.log(`[Socket] Updating event ${eventId} with ${items.length} items`);
+      if (items.length > 0) {
+        console.log(`[Socket] Items being saved:`, items.map(item => ({ id: item.id, name: item.name, bought: item.bought })));
+      }
+      
       // Update the event in storage - this works for both default and newly created events
       const updatedEvent = {
         ...eventToUpdate,
         ...eventData,
+        items: items, // Explicitly set items to ensure they're preserved
         participants: normalizedParticipants,
         sharedWith: normalizedSharedWith,
         ownerId: eventToUpdate.ownerId || actualUserId, // Preserve ownerId
@@ -240,24 +248,29 @@ io.on("connection", (socket) => {
       };
       
       events.set(eventId, updatedEvent);
-      console.log(`[Socket] Updated event ${eventId} in storage. Participants: [${normalizedParticipants.join(', ')}], sharedWith: [${normalizedSharedWith.join(', ')}]`);
+      console.log(`[Socket] Updated event ${eventId} in storage. Participants: [${normalizedParticipants.join(', ')}], sharedWith: [${normalizedSharedWith.join(', ')}], items: ${items.length}`);
       
       // Verify the update was saved correctly
-      const savedEvent = events.get(eventId);
-      if (!savedEvent) {
+      const verifiedEvent = events.get(eventId);
+      if (!verifiedEvent) {
         console.error(`[Socket] ERROR: Event ${eventId} was not found in storage after update!`);
       } else {
-        const savedParticipants = (savedEvent.participants || []).map(p => p?.toLowerCase()).join(',');
-        const savedSharedWith = (savedEvent.sharedWith || []).map(s => s?.toLowerCase()).join(',');
+        const savedParticipants = (verifiedEvent.participants || []).map(p => p?.toLowerCase()).join(',');
+        const savedSharedWith = (verifiedEvent.sharedWith || []).map(s => s?.toLowerCase()).join(',');
+        const savedItemsCount = (verifiedEvent.items || []).length;
         const expectedParticipants = normalizedParticipants.join(',');
         const expectedSharedWith = normalizedSharedWith.join(',');
+        const expectedItemsCount = items.length;
         
         if (savedParticipants !== expectedParticipants || savedSharedWith !== expectedSharedWith) {
           console.error(`[Socket] ERROR: Event ${eventId} was not updated correctly!`);
           console.error(`[Socket]   Expected participants: [${expectedParticipants}], got: [${savedParticipants}]`);
           console.error(`[Socket]   Expected sharedWith: [${expectedSharedWith}], got: [${savedSharedWith}]`);
+        } else if (savedItemsCount !== expectedItemsCount) {
+          console.error(`[Socket] ERROR: Event ${eventId} items count mismatch!`);
+          console.error(`[Socket]   Expected ${expectedItemsCount} items, but saved event has ${savedItemsCount} items`);
         } else {
-          console.log(`[Socket] Verified: Event ${eventId} was updated correctly in storage`);
+          console.log(`[Socket] Verified: Event ${eventId} was updated correctly in storage (${savedItemsCount} items, ${normalizedParticipants.length} participants)`);
         }
       }
       
@@ -425,11 +438,12 @@ io.on("connection", (socket) => {
     }
     
     // Get all participants who should be notified
+    // IMPORTANT: Normalize ownerId before adding to array to ensure consistent lookup
     const allParticipants = [...new Set([
-      ...(sharedWith || []),
-      ...(participants || []),
-      ownerId
-    ].filter(id => id && typeof id === 'string').map(id => id.toLowerCase()))];
+      ...(normalizedSharedWith || []),
+      ...(normalizedParticipants || []),
+      normalizedOwnerId
+    ].filter(id => id && typeof id === 'string'))];
     
     // Delete the event and mark it as deleted to prevent recreation
     events.delete(eventId);
@@ -437,18 +451,23 @@ io.on("connection", (socket) => {
     console.log(`[Socket] Event ${eventId} deleted by user ${normalizedUserId} (marked as deleted to prevent recreation)`);
     
     // Broadcast deletion to all participants
+    console.log(`[Socket] Broadcasting deletion to ${allParticipants.length} participants: [${allParticipants.join(', ')}]`);
     allParticipants.forEach(targetUserId => {
       if (targetUserId !== normalizedUserId) { // Don't notify the deleter
-        const targetUser = users.get(targetUserId);
+        // Ensure targetUserId is normalized for lookup
+        const normalizedTargetUserId = targetUserId.toLowerCase();
+        const targetUser = users.get(normalizedTargetUserId);
         if (targetUser && targetUser.socketId) {
           io.to(targetUser.socketId).emit("event:delete", {
             eventId,
             fromUserId: normalizedUserId,
           });
-          console.log(`[Socket] Sent event:delete to user ${targetUserId} for event ${eventId}`);
+          console.log(`[Socket] Sent event:delete to user ${normalizedTargetUserId} (socketId=${targetUser.socketId}) for event ${eventId}`);
         } else {
-          console.log(`[Socket] User ${targetUserId} not found or not online, cannot send event:delete for event ${eventId}`);
+          console.log(`[Socket] User ${normalizedTargetUserId} not found or not online (user exists: ${!!targetUser}, socketId: ${targetUser?.socketId || 'none'}), cannot send event:delete for event ${eventId}`);
         }
+      } else {
+        console.log(`[Socket] Skipping deletion notification to deleter ${targetUserId}`);
       }
     });
     
@@ -818,9 +837,17 @@ app.post("/api/events", (req, res) => {
   const normalizedParticipants = [...new Set((participants || []).map(p => p.toLowerCase()))];
   const normalizedSharedWith = [...new Set((sharedWith || []).map(s => s.toLowerCase()))];
   
+  // IMPORTANT: Explicitly preserve items from eventData to ensure they're saved
+  const items = eventData.items || existingEvent?.items || [];
+  console.log(`[API] Saving event ${eventIdToUse} with ${items.length} items`);
+  if (items.length > 0) {
+    console.log(`[API] Items being saved:`, items.map(item => ({ id: item.id, name: item.name, bought: item.bought })));
+  }
+  
   const event = {
     id: eventIdToUse,
     ...eventData,
+    items: items, // Explicitly set items to ensure they're preserved
     participants: normalizedParticipants,
     ownerId: ownerId,
     sharedWith: normalizedSharedWith,
@@ -830,11 +857,18 @@ app.post("/api/events", (req, res) => {
   
   // Save the event to storage
   events.set(eventIdToUse, event);
+  
+  // Verify items were saved
+  const verifiedEvent = events.get(eventIdToUse);
+  const savedItemsCount = verifiedEvent?.items?.length || 0;
+  console.log(`[API] Verified: Event ${eventIdToUse} saved with ${savedItemsCount} items`);
+  if (savedItemsCount !== items.length) {
+    console.error(`[API] WARNING: Item count mismatch! Expected ${items.length} items, but saved event has ${savedItemsCount} items`);
+  }
   console.log(`[API] Event saved successfully: ${eventIdToUse}, title: ${event.title || 'Untitled'}, owner: ${ownerId}, sharedWith: ${normalizedSharedWith.join(', ')}`);
   
   // Verify the event was saved
-  const savedEvent = events.get(eventIdToUse);
-  if (!savedEvent) {
+  if (!verifiedEvent) {
     console.error(`[API] ERROR: Event ${eventIdToUse} was not saved properly!`);
     return res.status(500).json({ error: "Failed to save event" });
   }
@@ -1007,11 +1041,12 @@ app.delete("/api/events/:eventId", (req, res) => {
   }
   
   // Get all participants who should be notified
+  // IMPORTANT: Normalize ownerId before adding to array to ensure consistent lookup
   const allParticipants = [...new Set([
-    ...(sharedWith || []),
-    ...(participants || []),
-    ownerId
-  ].filter(id => id && typeof id === 'string').map(id => id.toLowerCase()))];
+    ...(normalizedSharedWith || []),
+    ...(normalizedParticipants || []),
+    normalizedOwnerId
+  ].filter(id => id && typeof id === 'string'))];
   
   // Delete the event and mark it as deleted to prevent recreation
   events.delete(eventId);
@@ -1019,16 +1054,23 @@ app.delete("/api/events/:eventId", (req, res) => {
   console.log(`[API] Event ${eventId} deleted by user ${userId} (marked as deleted to prevent recreation)`);
   
   // Broadcast deletion to all participants
+  console.log(`[API] Broadcasting deletion to ${allParticipants.length} participants: [${allParticipants.join(', ')}]`);
   allParticipants.forEach(targetUserId => {
     if (targetUserId !== normalizedUserId) { // Don't notify the deleter
-      const targetUser = users.get(targetUserId);
+      // Ensure targetUserId is normalized for lookup
+      const normalizedTargetUserId = targetUserId.toLowerCase();
+      const targetUser = users.get(normalizedTargetUserId);
       if (targetUser && targetUser.socketId) {
         io.to(targetUser.socketId).emit("event:delete", {
           eventId,
           fromUserId: normalizedUserId,
         });
-        console.log(`[API] Sent event:delete to user ${targetUserId} for event ${eventId}`);
+        console.log(`[API] Sent event:delete to user ${normalizedTargetUserId} (socketId=${targetUser.socketId}) for event ${eventId}`);
+      } else {
+        console.log(`[API] User ${normalizedTargetUserId} not found or not online (user exists: ${!!targetUser}, socketId: ${targetUser?.socketId || 'none'}), cannot send event:delete for event ${eventId}`);
       }
+    } else {
+      console.log(`[API] Skipping deletion notification to deleter ${targetUserId}`);
     }
   });
   

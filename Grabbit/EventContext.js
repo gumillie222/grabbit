@@ -590,9 +590,12 @@ export const EventProvider = ({ children }) => {
   };
 
   const updateItems = async (eventId, updatedItems) => {
+    // Return a promise that resolves when persistence completes
+    return new Promise(async (resolve, reject) => {
     const updater = list =>
       list.map(e => (e.id === eventId ? { ...e, items: updatedItems } : e));
 
+    // Update state and refs
     setEvents(prev => {
       const updated = updater(prev);
       eventsRef.current = updated;
@@ -607,12 +610,24 @@ export const EventProvider = ({ children }) => {
     // Sync with backend
     if (currentUser?.id) {
       try {
-        const event = events.find(e => e.id === eventId) || archivedEvents.find(e => e.id === eventId);
+        // IMPORTANT: Use refs to get the latest event data, not state (state updates are async)
+        const event = eventsRef.current.find(e => e.id === eventId) || 
+                     archivedEventsRef.current.find(e => e.id === eventId);
+        
         if (event) {
+          // Build the event data to save with updated items
+          const eventDataToSave = {
+            ...event,
+            items: updatedItems,
+            participants: event.participants || [],
+            title: event.title,
+            archived: event.archived || false,
+          };
+          
           // Send real-time update via socket FIRST for immediate updates
           // Don't send sharedWith - let server compute it from participants
           if (socketRef.current && socketRef.current.connected) {
-            const { sharedWith, ...eventWithoutSharedWith } = event;
+            const { sharedWith, ...eventWithoutSharedWith } = eventDataToSave;
             const payload = {
               eventId,
               eventData: {
@@ -622,22 +637,44 @@ export const EventProvider = ({ children }) => {
               },
             };
             socketRef.current.emit('event:update', payload);
+            console.log(`[EventContext] Sent socket update for event ${eventId} with ${updatedItems.length} items`);
+          } else {
+            console.warn(`[EventContext] Socket not connected, skipping socket update for event ${eventId}`);
           }
           
-          // Persist to backend via REST API (in background, don't block)
-          api.saveEvent(currentUser.id, eventId, {
-            ...event,
-            items: updatedItems,
-            participants: event.participants || [],
-          }).catch(err => {
-            console.error('[EventContext] Failed to persist event to backend:', err);
-            // Don't throw - socket update already sent, this is just persistence
-          });
+          // CRITICAL: Persist to backend via REST API - this MUST complete to ensure data is saved
+          // Even if socket is not connected, we need to persist to backend
+          // Use await to ensure it completes (but don't block the UI)
+          try {
+            await api.saveEvent(currentUser.id, eventId, eventDataToSave);
+            console.log(`[EventContext] Successfully persisted event ${eventId} to backend with ${updatedItems.length} items`);
+            resolve(); // Resolve promise on success
+          } catch (persistErr) {
+            // Log error but don't throw - we've already updated local state
+            console.error(`[EventContext] Failed to persist event ${eventId} to backend:`, persistErr);
+            console.error(`[EventContext] Error details:`, persistErr.message);
+            // Reload events to restore from backend on error
+            // This ensures we don't lose data if persistence fails
+            setTimeout(() => {
+              console.log(`[EventContext] Reloading events after persistence failure for event ${eventId}`);
+              reloadEvents();
+            }, 1000);
+            reject(persistErr); // Reject promise on failure
+          }
+        } else {
+          console.warn(`[EventContext] Event ${eventId} not found in refs, cannot persist items update`);
+          reject(new Error(`Event ${eventId} not found`));
         }
       } catch (err) {
         console.error('[EventContext] Failed to sync items update:', err);
+        console.error('[EventContext] Error details:', err.message);
+        reject(err);
       }
+    } else {
+      // No current user - resolve immediately (can't persist)
+      resolve();
     }
+    });
   };
 
   const updateParticipants = async (eventId, updatedParticipants) => {
