@@ -5,7 +5,7 @@ import Constants from 'expo-constants';
 // Your computer's local IP address on the network
 // Update this to match your computer's IP (find it with: ifconfig on Mac/Linux or ipconfig on Windows)
 // Make sure your phone and computer are on the same WiFi network
-const LOCAL_IP = '10.0.0.23';
+const LOCAL_IP = '10.103.106.2';
 
 // Determine the correct server URL based on platform
 const getServerUrl = () => {

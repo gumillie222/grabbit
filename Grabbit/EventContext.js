@@ -93,7 +93,12 @@ export const EventProvider = ({ children }) => {
       
       backendEvents.forEach(e => {
         // Skip events that were locally deleted (even if they still exist on backend)
-        if (deletedEventIdsRef.current.has(e.id)) {
+        // Convert both to string for comparison to handle number/string mismatches
+        const eventIdStr = String(e.id);
+        if (deletedEventIdsRef.current.has(eventIdStr) || 
+            deletedEventIdsRef.current.has(e.id) ||
+            Array.from(deletedEventIdsRef.current).some(deletedId => String(deletedId) === eventIdStr)) {
+          console.log(`[EventContext] Skipping deleted event: ${e.id} (${e.title})`);
           return;
         }
         
@@ -120,8 +125,23 @@ export const EventProvider = ({ children }) => {
       archivedEventsRef.current = archivedEventsList;
       return [...activeEvents, ...archivedEventsList];
     } catch (err) {
+      // Network errors and timeouts are common - don't clear existing events, just log the warning
+      const isNetworkError = err.name === 'AbortError' || 
+                            err.message?.includes('Network request failed') || 
+                            err.message?.includes('Failed to fetch') ||
+                            err.message?.includes('Aborted');
+      
+      if (isNetworkError) {
+        console.warn('[EventContext] Network request failed or timed out - server may be offline. Using existing events.');
+        // Return current events instead of clearing them
+        return [...eventsRef.current, ...archivedEventsRef.current];
+      }
+      
+      // Only log as error for non-network issues
       console.error('[EventContext] Failed to reload events from backend:', err);
       console.error('[EventContext] Error details:', err.message);
+      
+      // Only clear events on non-network errors (like auth errors)
       setEvents([]);
       eventsRef.current = [];
       archivedEventsRef.current = [];
@@ -215,6 +235,12 @@ export const EventProvider = ({ children }) => {
         return; // Ignore our own deletions
       }
 
+      // Track this event as deleted to prevent it from being restored on reload
+      // Store as both string and original format to handle type mismatches
+      deletedEventIdsRef.current.add(String(eventId));
+      deletedEventIdsRef.current.add(eventId);
+      console.log(`[EventContext] Marked event as deleted (from socket): ${eventId}, total deleted: ${deletedEventIdsRef.current.size}`);
+
       // Remove event from both lists
       setEvents(prev => {
         const updated = prev.filter(e => e.id !== eventId);
@@ -230,6 +256,16 @@ export const EventProvider = ({ children }) => {
 
     socket.on('event:update', (payload) => {
       const { eventId, eventData, fromUserId } = payload;
+      
+      // Ignore updates for events that were locally deleted
+      // Check both string and original format
+      const eventIdStr = String(eventId);
+      if (deletedEventIdsRef.current.has(eventIdStr) || 
+          deletedEventIdsRef.current.has(eventId) ||
+          Array.from(deletedEventIdsRef.current).some(deletedId => String(deletedId) === eventIdStr)) {
+        console.log(`[EventContext] Ignoring update for deleted event: ${eventId}`);
+        return;
+      }
       
       // Ignore our own updates (case-insensitive comparison)
       if (fromUserId && currentUser?.id && fromUserId.toLowerCase() === currentUser.id.toLowerCase()) {
@@ -536,6 +572,12 @@ export const EventProvider = ({ children }) => {
     // MUST check BEFORE removing from arrays
     const eventToDelete = events.find(e => e.id === id) || archivedEvents.find(e => e.id === id);
     const isNewEvent = eventToDelete?.isNew === true;
+    
+    // Track this event as deleted to prevent it from being restored on reload
+    // Store as both string and original format to handle type mismatches
+    deletedEventIdsRef.current.add(String(id));
+    deletedEventIdsRef.current.add(id);
+    console.log(`[EventContext] Marked event as deleted: ${id}, total deleted: ${deletedEventIdsRef.current.size}`);
     
     // Update local state immediately
     setEvents(prev => {

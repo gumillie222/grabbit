@@ -4,13 +4,28 @@ import { SERVER_URL } from './config';
 export const api = {
   // User endpoints
   registerUser: async (userData) => {
-    const response = await fetch(`${SERVER_URL}/api/users/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData),
-    });
-    if (!response.ok) throw new Error('Failed to register user');
-    return response.json();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(`${SERVER_URL}/api/users/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) throw new Error('Failed to register user');
+      return response.json();
+    } catch (err) {
+      // Don't log network errors as errors - they're expected if server is offline
+      if (err.name === 'AbortError' || err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
+        console.warn('[API] registerUser network error - server may be offline:', err.message);
+      }
+      throw err;
+    }
   },
 
   // Hardcoded for demo - user search always returns empty
@@ -51,7 +66,16 @@ export const api = {
   // Event endpoints
   getEvents: async (userId) => {
     try {
-      const response = await fetch(`${SERVER_URL}/api/events/${userId}`);
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(`${SERVER_URL}/api/events/${userId}`, {
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[API] getEvents failed: ${response.status} ${response.statusText}`, errorText);
@@ -59,7 +83,12 @@ export const api = {
       }
       return response.json();
     } catch (err) {
-      console.error('[API] getEvents error:', err);
+      // Don't log network errors as errors - they're expected if server is offline
+      if (err.name === 'AbortError' || err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
+        console.warn('[API] getEvents network error - server may be offline:', err.message);
+      } else {
+        console.error('[API] getEvents error:', err);
+      }
       throw err;
     }
   },

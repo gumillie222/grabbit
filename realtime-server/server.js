@@ -506,8 +506,9 @@ app.get("/api/friends/:userId", (req, res) => {
 // Get events for a user
 app.get("/api/events/:userId", (req, res) => {
   const { userId } = req.params;
+  const normalizedUserId = userId.toLowerCase();
   
-  console.log(`[API] GET /api/events/${userId} - Total events in storage: ${events.size}`);
+  console.log(`[API] GET /api/events/${userId} (normalized: ${normalizedUserId}) - Total events in storage: ${events.size}`);
   
   // Ensure default events exist before returning
   const eventsCreated = ensureDefaultEvents();
@@ -517,18 +518,22 @@ app.get("/api/events/:userId", (req, res) => {
   
   const userEvents = [];
   for (const [eventId, event] of events.entries()) {
-    // Include events owned by user or shared with user
-    if (event.ownerId === userId || (event.sharedWith && event.sharedWith.includes(userId))) {
-      console.log(`[API] Event ${eventId} matches user ${userId}`);
+    // Normalize IDs for comparison (case-insensitive)
+    const normalizedOwnerId = event.ownerId?.toLowerCase();
+    const normalizedSharedWith = (event.sharedWith || []).map(id => id?.toLowerCase());
+    
+    // Include events owned by user or shared with user (case-insensitive comparison)
+    if (normalizedOwnerId === normalizedUserId || normalizedSharedWith.includes(normalizedUserId)) {
+      console.log(`[API] Event ${eventId} matches user ${normalizedUserId} (owner: ${normalizedOwnerId}, sharedWith: ${normalizedSharedWith.join(', ')})`);
       
       // Items already have user IDs - send as-is
       userEvents.push(event);
     } else {
-      console.log(`[API] Event ${eventId} does NOT match: ownerId=${event.ownerId}, sharedWith=${JSON.stringify(event.sharedWith)}, userId=${userId}`);
+      console.log(`[API] Event ${eventId} does NOT match: ownerId=${normalizedOwnerId}, sharedWith=${JSON.stringify(normalizedSharedWith)}, userId=${normalizedUserId}`);
     }
   }
   
-  console.log(`[API] Returning ${userEvents.length} events for user ${userId}:`, userEvents.map(e => e.title));
+  console.log(`[API] Returning ${userEvents.length} events for user ${normalizedUserId}:`, userEvents.map(e => e.title));
   res.json({ events: userEvents });
 });
 

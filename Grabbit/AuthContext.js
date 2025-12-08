@@ -30,7 +30,12 @@ export const AuthProvider = ({ children }) => {
           setCurrentUser(user);
           // Register with backend and wait for it to complete
           await registerUserWithBackend(user).catch(err => {
-            console.error('[Auth] Background registration failed on load:', err);
+            // Network errors are expected if server is offline - don't log as error
+            if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
+              console.warn('[Auth] Server may be offline - registration skipped:', err.message);
+            } else {
+              console.error('[Auth] Background registration failed on load:', err);
+            }
           });
         } else {
           // Auto-login Bob as default user
@@ -44,7 +49,12 @@ export const AuthProvider = ({ children }) => {
           await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(defaultUser));
           // Register with backend and wait for it to complete
           await registerUserWithBackend(defaultUser).catch(err => {
-            console.error('[Auth] Background registration failed on load:', err);
+            // Network errors are expected if server is offline - don't log as error
+            if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
+              console.warn('[Auth] Server may be offline - registration skipped:', err.message);
+            } else {
+              console.error('[Auth] Background registration failed on load:', err);
+            }
           });
         }
       } catch (err) {
@@ -65,11 +75,18 @@ export const AuthProvider = ({ children }) => {
 
   const registerUserWithBackend = async (user) => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const response = await fetch(`${SERVER_URL}/api/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[Auth] Failed to register with backend:', errorText);
@@ -77,7 +94,12 @@ export const AuthProvider = ({ children }) => {
       }
       return true;
     } catch (err) {
-      console.error('[Auth] Error registering with backend:', err.message);
+      // Network errors are expected if server is offline - don't log as error
+      if (err.name === 'AbortError' || err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
+        console.warn('[Auth] Server may be offline - registration skipped:', err.message);
+      } else {
+        console.error('[Auth] Error registering with backend:', err.message);
+      }
       // Don't throw - allow login to proceed even if backend is unavailable
       return false;
     }
