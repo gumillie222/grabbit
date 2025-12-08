@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { io } from 'socket.io-client';
 
@@ -24,7 +25,7 @@ import { SERVER_URL } from './config';
 import { getUserColors, getUserInitial } from './userColors';
 
 export default function ProfileScreen({ navigation }) {
-  const { archivedEvents, unarchiveEvent, friends, setFriends } = useContext(EventContext);
+  const { archivedEvents, unarchiveEvent, friends, setFriends, reloadEvents } = useContext(EventContext);
   const { currentUser, switchAccount } = useAuth();
   const socketRef = useRef(null);
   
@@ -33,6 +34,15 @@ export default function ProfileScreen({ navigation }) {
     phone: currentUser?.phone || '508-667-1234',
     email: currentUser?.email || 'grabbit@upenn.edu',
   });
+
+  // Reload events when screen comes into focus (for real-time updates)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (reloadEvents) {
+        reloadEvents();
+      }
+    }, [reloadEvents])
+  );
 
   // Sync profile with currentUser when it changes
   useEffect(() => {

@@ -17,6 +17,12 @@ export const EventProvider = ({ children }) => {
   // Track locally deleted event IDs to prevent them from being restored on reload
   const deletedEventIdsRef = useRef(new Set());
 
+  // Helper to normalize user identifier for comparison (handles both IDs and names)
+  const normalizeUserId = (userId) => {
+    if (!userId) return null;
+    return userId.toLowerCase();
+  };
+
   // Active events (home)
   const [events, setEvents] = useState([]);
 
@@ -91,6 +97,8 @@ export const EventProvider = ({ children }) => {
       const activeEvents = [];
       const archivedEventsList = [];
       
+      const normalizedCurrentUserIdForReload = currentUser?.id?.toLowerCase();
+      
       backendEvents.forEach(e => {
         // Skip events that were locally deleted (even if they still exist on backend)
         // Convert both to string for comparison to handle number/string mismatches
@@ -102,11 +110,30 @@ export const EventProvider = ({ children }) => {
           return;
         }
         
+        // IMPORTANT: Only check sharedWith for access control, not participants
+        // participants can include dummy friends who don't have access
+        // sharedWith is the source of truth for who has access to the event
+        const eventSharedWith = e.sharedWith || [];
+        const eventOwnerId = e.ownerId?.toLowerCase();
+        const userHasAccess = eventOwnerId === normalizedCurrentUserIdForReload || 
+                              eventSharedWith.some(p => 
+                                normalizeUserId(p) === normalizeUserId(normalizedCurrentUserIdForReload)
+                              );
+        
+        // Skip events where user does not have access
+        if (!userHasAccess) {
+          console.log(`[EventContext] Skipping event ${e.id} (${e.title}) - user does not have access (not in sharedWith and not owner)`);
+          console.log(`[EventContext]   Event sharedWith: [${eventSharedWith.join(', ')}], ownerId: ${eventOwnerId}, userId: ${normalizedCurrentUserIdForReload}`);
+          return;
+        }
+        
         const formattedEvent = {
           id: e.id,
           title: e.title,
           items: e.items || [],
           participants: e.participants || [],
+          sharedWith: e.sharedWith || [], // Preserve sharedWith for access control
+          ownerId: e.ownerId, // Preserve ownerId for access control
           isNew: false,
           archived: e.archived === true, // Preserve archived status from backend
         };
@@ -118,12 +145,41 @@ export const EventProvider = ({ children }) => {
         }
       });
       
-      setEvents(activeEvents);
-      setArchivedEvents(archivedEventsList);
+      // Double-check: filter out any events where user doesn't have access
+      // This is a safety check in case backend returned events user shouldn't see
+      // IMPORTANT: Only check sharedWith for access control, not participants
+      const filteredActiveEvents = activeEvents.filter(e => {
+        const eventSharedWith = e.sharedWith || [];
+        const eventOwnerId = e.ownerId?.toLowerCase();
+        const hasAccess = eventOwnerId === normalizedCurrentUserIdForReload || 
+                          eventSharedWith.some(p => 
+                            normalizeUserId(p) === normalizeUserId(normalizedCurrentUserIdForReload)
+                          );
+        if (!hasAccess) {
+          console.log(`[EventContext] Filtering out event ${e.id} (${e.title}) - user does not have access (not in sharedWith and not owner)`);
+        }
+        return hasAccess;
+      });
+      
+      const filteredArchivedEvents = archivedEventsList.filter(e => {
+        const eventSharedWith = e.sharedWith || [];
+        const eventOwnerId = e.ownerId?.toLowerCase();
+        const hasAccess = eventOwnerId === normalizedCurrentUserIdForReload || 
+                          eventSharedWith.some(p => 
+                            normalizeUserId(p) === normalizeUserId(normalizedCurrentUserIdForReload)
+                          );
+        if (!hasAccess) {
+          console.log(`[EventContext] Filtering out archived event ${e.id} (${e.title}) - user does not have access (not in sharedWith and not owner)`);
+        }
+        return hasAccess;
+      });
+      
+      setEvents(filteredActiveEvents);
+      setArchivedEvents(filteredArchivedEvents);
       // Keep refs in sync
-      eventsRef.current = activeEvents;
-      archivedEventsRef.current = archivedEventsList;
-      return [...activeEvents, ...archivedEventsList];
+      eventsRef.current = filteredActiveEvents;
+      archivedEventsRef.current = filteredArchivedEvents;
+      return [...filteredActiveEvents, ...filteredArchivedEvents];
     } catch (err) {
       // Network errors and timeouts are common - don't clear existing events, just log the warning
       const isNetworkError = err.name === 'AbortError' || 
@@ -180,7 +236,15 @@ export const EventProvider = ({ children }) => {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      // Socket connected
+      console.log(`[EventContext] Socket connected for user ${currentUser.id}`);
+    });
+
+    socket.on('disconnect', () => {
+      console.log(`[EventContext] Socket disconnected for user ${currentUser.id}`);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error(`[EventContext] Socket connection error for user ${currentUser.id}:`, error);
     });
 
     // Listen for friend accepted events to reload friends list
@@ -231,31 +295,51 @@ export const EventProvider = ({ children }) => {
     socket.on('event:delete', (payload) => {
       const { eventId, fromUserId } = payload;
       
-      if (fromUserId === currentUser.id) {
-        return; // Ignore our own deletions
+      // Ignore our own deletions (case-insensitive comparison)
+      if (fromUserId && currentUser?.id && normalizeUserId(fromUserId) === normalizeUserId(currentUser.id)) {
+        console.log(`[EventContext] Ignoring own deletion for event: ${eventId}`);
+        return;
       }
+      
+      console.log(`[EventContext] Received event:delete for event ${eventId} from ${fromUserId}`);
 
       // Track this event as deleted to prevent it from being restored on reload
       // Store as both string and original format to handle type mismatches
       deletedEventIdsRef.current.add(String(eventId));
       deletedEventIdsRef.current.add(eventId);
-      console.log(`[EventContext] Marked event as deleted (from socket): ${eventId}, total deleted: ${deletedEventIdsRef.current.size}`);
+      console.log(`[EventContext] Marked event ${eventId} as deleted (from socket). Total deleted events: ${deletedEventIdsRef.current.size}`);
 
-      // Remove event from both lists
-      setEvents(prev => {
-        const updated = prev.filter(e => e.id !== eventId);
-        eventsRef.current = updated;
-        return updated;
-      });
-      setArchivedEvents(prev => {
-        const updated = prev.filter(e => e.id !== eventId);
-        archivedEventsRef.current = updated;
-        return updated;
-      });
+      // Remove ONLY this specific event from both lists immediately
+      // This should NOT affect any other events
+      const currentEvents = eventsRef.current;
+      const currentArchived = archivedEventsRef.current;
+      const eventExistsInActive = currentEvents.some(e => e.id === eventId);
+      const eventExistsInArchived = currentArchived.some(e => e.id === eventId);
+      
+      if (eventExistsInActive || eventExistsInArchived) {
+        console.log(`[EventContext] Removing ONLY event ${eventId} from local state (found in ${eventExistsInActive ? 'active' : ''} ${eventExistsInArchived ? 'archived' : ''})`);
+        // Filter out ONLY the specific eventId - don't touch other events
+        const newEvents = currentEvents.filter(e => e.id !== eventId);
+        const newArchived = currentArchived.filter(e => e.id !== eventId);
+        
+        console.log(`[EventContext] Before removal: ${currentEvents.length} active, ${currentArchived.length} archived`);
+        console.log(`[EventContext] After removal: ${newEvents.length} active, ${newArchived.length} archived`);
+        console.log(`[EventContext] Remaining event IDs: active=[${newEvents.map(e => e.id).join(', ')}], archived=[${newArchived.map(e => e.id).join(', ')}]`);
+        
+        eventsRef.current = newEvents;
+        archivedEventsRef.current = newArchived;
+        setEvents(newEvents);
+        setArchivedEvents(newArchived);
+        console.log(`[EventContext] Successfully removed ONLY event ${eventId}. Other events remain untouched.`);
+      } else {
+        console.log(`[EventContext] Event ${eventId} not found in local state, but marked as deleted to prevent future restoration`);
+      }
     });
 
     socket.on('event:update', (payload) => {
       const { eventId, eventData, fromUserId } = payload;
+      
+      console.log(`[EventContext] Received event:update for event ${eventId}, archived: ${eventData?.archived}, from: ${fromUserId}`);
       
       // Ignore updates for events that were locally deleted
       // Check both string and original format
@@ -269,6 +353,7 @@ export const EventProvider = ({ children }) => {
       
       // Ignore our own updates (case-insensitive comparison)
       if (fromUserId && currentUser?.id && fromUserId.toLowerCase() === currentUser.id.toLowerCase()) {
+        console.log(`[EventContext] Ignoring own update for event: ${eventId}`);
         return;
       }
 
@@ -280,22 +365,69 @@ export const EventProvider = ({ children }) => {
       const eventInArchived = currentArchived.find(e => e.id === eventId);
       const existingEvent = eventInEvents || eventInArchived;
       
+      // Check if current user still has access to the updated event
+      // Use the updated data if available, otherwise fall back to existing event data
+      // IMPORTANT: Only check sharedWith for access control, not participants
+      // participants can include dummy friends who don't have access
+      const updatedSharedWith = eventData.sharedWith !== undefined 
+        ? eventData.sharedWith 
+        : (existingEvent?.sharedWith || []);
+      const updatedOwnerId = (eventData.ownerId || existingEvent?.ownerId || currentUser?.id)?.toLowerCase();
+      const normalizedCurrentUserId = currentUser?.id?.toLowerCase();
+      
+      // Check if user still has access (case-insensitive)
+      // User has access if they're the owner or in sharedWith
+      // Do NOT check participants - it can include dummy friends
+      const userIsOwner = updatedOwnerId === normalizedCurrentUserId;
+      const userIsInSharedWith = updatedSharedWith.some(p => 
+        normalizeUserId(p) === normalizeUserId(normalizedCurrentUserId)
+      );
+      const userStillHasAccess = userIsOwner || userIsInSharedWith;
+      
+      console.log(`[EventContext] Checking access for event ${eventId}: userStillHasAccess=${userStillHasAccess}, ownerId=${updatedOwnerId}, sharedWith=${JSON.stringify(updatedSharedWith)}, currentUserId=${normalizedCurrentUserId}`);
+      
+      // If user no longer has access, remove the event from local state
+      if (!userStillHasAccess && existingEvent) {
+        console.log(`[EventContext] User ${normalizedCurrentUserId} no longer has access to event ${eventId}, removing from local state`);
+        // Track as deleted to prevent it from being restored
+        deletedEventIdsRef.current.add(String(eventId));
+        deletedEventIdsRef.current.add(eventId);
+        // Remove from both lists
+        const newEvents = currentEvents.filter(e => e.id !== eventId);
+        const newArchived = currentArchived.filter(e => e.id !== eventId);
+        
+        eventsRef.current = newEvents;
+        archivedEventsRef.current = newArchived;
+        setEvents(newEvents);
+        setArchivedEvents(newArchived);
+        return; // Don't process further updates for this event
+      }
+      
+      // If user doesn't have access and this is a new event, don't add it
+      if (!userStillHasAccess && !existingEvent) {
+        console.log(`[EventContext] Ignoring update for event ${eventId} - user does not have access`);
+        return;
+      }
+      
       const isNowArchived = eventData.archived === true;
       const wasArchived = existingEvent?.archived === true;
       
+      console.log(`[EventContext] Processing archive status change: wasArchived=${wasArchived}, isNowArchived=${isNowArchived}`);
       
       // Build updated event
       const updatedEvent = existingEvent ? {
         ...existingEvent,
         ...eventData,
         items: eventData.items || existingEvent.items,
-        participants: eventData.participants || existingEvent.participants,
+        participants: eventData.participants !== undefined ? eventData.participants : existingEvent.participants,
+        sharedWith: eventData.sharedWith !== undefined ? eventData.sharedWith : existingEvent.sharedWith,
         archived: eventData.archived !== undefined ? eventData.archived : existingEvent.archived,
       } : {
         id: eventId,
         title: eventData.title || 'Untitled',
         items: eventData.items || [],
         participants: eventData.participants || [],
+        sharedWith: eventData.sharedWith || [],
         archived: isNowArchived,
         isNew: false,
         ...eventData,
@@ -509,10 +641,18 @@ export const EventProvider = ({ children }) => {
   };
 
   const updateParticipants = async (eventId, updatedParticipants) => {
+    console.log(`[EventContext] updateParticipants called for event ${eventId} with participants:`, updatedParticipants);
+    
+    // Only update the specific event - use eventId to scope the update
     const updater = list =>
-      list.map(e =>
-        e.id === eventId ? { ...e, participants: updatedParticipants } : e
-      );
+      list.map(e => {
+        if (e.id === eventId) {
+          console.log(`[EventContext] Updating participants for event ${eventId} from [${(e.participants || []).join(', ')}] to [${updatedParticipants.join(', ')}]`);
+          return { ...e, participants: updatedParticipants };
+        }
+        // Don't modify other events
+        return e;
+      });
 
     // Store previous state in case we need to rollback
     const previousEvents = [...events];
@@ -521,11 +661,13 @@ export const EventProvider = ({ children }) => {
     setEvents(prev => {
       const updated = updater(prev);
       eventsRef.current = updated;
+      console.log(`[EventContext] Updated events list. Event ${eventId} participants updated. Total events: ${updated.length}`);
       return updated;
     });
     setArchivedEvents(prev => {
       const updated = updater(prev);
       archivedEventsRef.current = updated;
+      console.log(`[EventContext] Updated archived events list. Event ${eventId} participants updated. Total archived: ${updated.length}`);
       return updated;
     });
 
@@ -593,13 +735,21 @@ export const EventProvider = ({ children }) => {
 
     // Sync with backend and broadcast to all participants
     if (currentUser?.id) {
+      // Get participants before deletion for socket broadcast
+      const participants = eventToDelete?.participants || [];
+      const sharedWith = eventToDelete?.sharedWith || [];
+      const allParticipants = [...new Set([...participants, ...sharedWith, eventToDelete?.ownerId].filter(Boolean))];
+      
       // If event was never saved to backend (isNew: true), skip backend call
       if (isNewEvent) {
         // Still broadcast deletion via socket in case other clients have it
         if (socketRef.current && socketRef.current.connected) {
           socketRef.current.emit('event:delete', {
             eventId: id,
+            fromUserId: currentUser.id,
+            participants: allParticipants,
           });
+          console.log(`[EventContext] Emitted event:delete via socket for new event ${id} to participants:`, allParticipants);
         }
         return;
       }
@@ -607,11 +757,14 @@ export const EventProvider = ({ children }) => {
       try {
         await api.deleteEvent(currentUser.id, id);
 
-        // Send real-time deletion via socket
+        // Send real-time deletion via socket (server will also broadcast, but this ensures immediate delivery)
         if (socketRef.current && socketRef.current.connected) {
           socketRef.current.emit('event:delete', {
             eventId: id,
+            fromUserId: currentUser.id,
+            participants: allParticipants,
           });
+          console.log(`[EventContext] Emitted event:delete via socket for event ${id} to participants:`, allParticipants);
         }
       } catch (err) {
         // If event not found (404), it might have been already deleted or never synced
@@ -622,7 +775,10 @@ export const EventProvider = ({ children }) => {
           if (socketRef.current && socketRef.current.connected) {
             socketRef.current.emit('event:delete', {
               eventId: id,
+              fromUserId: currentUser.id,
+              participants: allParticipants,
             });
+            console.log(`[EventContext] Emitted event:delete via socket for 404 event ${id} to participants:`, allParticipants);
           }
           // Silently proceed - no error logging for expected 404
         } else {
@@ -665,6 +821,7 @@ export const EventProvider = ({ children }) => {
         // Only send socket broadcast after successful persistence
         if (socketRef.current && socketRef.current.connected) {
           const { sharedWith, ...eventWithoutSharedWith } = target;
+          console.log(`[EventContext] Emitting archive socket update for event ${id}`);
           socketRef.current.emit('event:update', {
             eventId: id,
             eventData: {
@@ -675,6 +832,8 @@ export const EventProvider = ({ children }) => {
               participants: target.participants || [],
             },
           });
+        } else {
+          console.warn(`[EventContext] Socket not connected, cannot broadcast archive for event ${id}`);
         }
       } catch (err) {
         console.error('[EventContext] Failed to persist archive to backend:', err);
@@ -716,6 +875,7 @@ export const EventProvider = ({ children }) => {
         // Only send socket broadcast after successful persistence
         if (socketRef.current && socketRef.current.connected) {
           const { sharedWith, ...eventWithoutSharedWith } = target;
+          console.log(`[EventContext] Emitting unarchive socket update for event ${id}`);
           socketRef.current.emit('event:update', {
             eventId: id,
             eventData: {
@@ -726,6 +886,8 @@ export const EventProvider = ({ children }) => {
               participants: target.participants || [],
             },
           });
+        } else {
+          console.warn(`[EventContext] Socket not connected, cannot broadcast unarchive for event ${id}`);
         }
       } catch (err) {
         console.error('[EventContext] Failed to persist unarchive to backend:', err);
@@ -737,10 +899,40 @@ export const EventProvider = ({ children }) => {
   };
 
   // Helper so screens can look up an event from either list
-  const getEventById = (id) =>
-    events.find(e => e.id === id) ||
-    archivedEvents.find(e => e.id === id) ||
-    null;
+  const getEventById = (id) => {
+    const event = events.find(e => e.id === id) || archivedEvents.find(e => e.id === id);
+    
+    // If no event found, return null
+    if (!event) {
+      return null;
+    }
+    
+    // Verify user has access to this event
+    // IMPORTANT: Only check sharedWith for access control, not participants
+    // participants can include dummy friends who don't have access
+    const normalizedCurrentUserId = currentUser?.id?.toLowerCase();
+    if (!normalizedCurrentUserId) {
+      return null; // No user logged in, no access
+    }
+    
+    const eventSharedWith = event.sharedWith || [];
+    const eventOwnerId = event.ownerId?.toLowerCase();
+    
+    const userIsOwner = eventOwnerId === normalizedCurrentUserId;
+    const userIsInSharedWith = eventSharedWith.some(p => 
+      normalizeUserId(p) === normalizeUserId(normalizedCurrentUserId)
+    );
+    const userHasAccess = userIsOwner || userIsInSharedWith;
+    
+    // Only return event if user has access
+    if (!userHasAccess) {
+      console.log(`[EventContext] getEventById: User ${normalizedCurrentUserId} does not have access to event ${id} (not in sharedWith and not owner)`);
+      console.log(`[EventContext]   Event sharedWith: [${eventSharedWith.join(', ')}], ownerId: ${eventOwnerId}`);
+      return null;
+    }
+    
+    return event;
+  };
 
   return (
     <EventContext.Provider

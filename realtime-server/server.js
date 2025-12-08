@@ -123,14 +123,40 @@ io.on("connection", (socket) => {
     
     // Update event in storage
     const existingEvent = events.get(eventId);
-    if (existingEvent) {
-      const ownerId = existingEvent.ownerId || actualUserId;
+    const ownerId = existingEvent?.ownerId || actualUserId;
+    
+    // If event doesn't exist, create it from the update
+    if (!existingEvent) {
+      console.log(`[Socket] Event ${eventId} doesn't exist yet, creating from update`);
+      // Create a new event from the update data
+      const newEvent = {
+        id: eventId,
+        title: eventData.title || 'Untitled',
+        items: eventData.items || [],
+        participants: eventData.participants || [actualUserId],
+        ownerId: actualUserId,
+        sharedWith: eventData.participants || [actualUserId],
+        archived: eventData.archived || false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        ...eventData,
+      };
+      events.set(eventId, newEvent);
+      console.log(`[Socket] Created new event ${eventId} from socket update`);
+    }
+    
+    // Now process the update (event should exist now)
+    const eventToUpdate = events.get(eventId);
+    if (eventToUpdate) {
       
       // Participants are already user IDs - use them directly for sharedWith
       // Normalize old sharedWith for comparison
-      const oldSharedWith = (existingEvent.sharedWith || [ownerId]).map(id => id?.toLowerCase());
+      const oldSharedWith = (eventToUpdate.sharedWith || [ownerId]).map(id => id?.toLowerCase());
+      const oldParticipants = (eventToUpdate.participants || []).map(id => id?.toLowerCase());
       
-      console.log(`[Socket] Existing event sharedWith: ${oldSharedWith.join(', ')}, ownerId: ${ownerId}`);
+      console.log(`[Socket] Processing update for event ${eventId} (${eventToUpdate.title || 'Untitled'})`);
+      console.log(`[Socket] Existing event - participants: [${oldParticipants.join(', ')}], sharedWith: [${oldSharedWith.join(', ')}], ownerId: ${ownerId}`);
+      console.log(`[Socket] Incoming update - participants: [${(eventData.participants || []).join(', ')}]`);
       
       let sharedWith = [];
       let participants = [];
@@ -153,6 +179,7 @@ io.on("connection", (socket) => {
         
         // Build sharedWith from normalized participants, but only include registered users
         // sharedWith is used for access control, so it should only include real users
+        // IMPORTANT: This ensures that when a user is removed from participants, they're also removed from sharedWith
         const normalizedOwnerId = ownerId?.toLowerCase();
         sharedWith = [normalizedOwnerId]; // Start with owner
         for (const participantId of normalizedParticipants) {
@@ -161,10 +188,14 @@ io.on("connection", (socket) => {
             // But we still save all participants in the participants array
             if (users.has(participantId)) {
               sharedWith.push(participantId);
+              console.log(`[Socket] Added registered user ${participantId} to sharedWith`);
+            } else {
+              console.log(`[Socket] Participant ${participantId} is not a registered user, not adding to sharedWith`);
             }
           }
         }
-        console.log(`[Socket] Updated sharedWith from participants: ${oldSharedWith.join(', ')} -> ${sharedWith.join(', ')}`);
+        console.log(`[Socket] Updated sharedWith from participants: [${oldSharedWith.join(', ')}] -> [${sharedWith.join(', ')}]`);
+        console.log(`[Socket] Updated participants: [${oldParticipants.join(', ')}] -> [${normalizedParticipants.join(', ')}]`);
         
         // Use normalized participants
         participants = normalizedParticipants;
@@ -177,7 +208,7 @@ io.on("connection", (socket) => {
           console.log(`[Socket] Added owner ${normalizedOwnerId} to sharedWith`);
         }
         // Keep existing participants if no new ones provided
-        participants = (existingEvent.participants || []).map(p => p?.toLowerCase());
+        participants = (eventToUpdate.participants || []).map(p => p?.toLowerCase());
       }
       
       // Normalize both arrays before comparison
@@ -186,7 +217,7 @@ io.on("connection", (socket) => {
       const wasSharedWithUpdated = JSON.stringify(normalizedOldSharedWith) !== JSON.stringify(normalizedNewSharedWith);
       
       // Check if archived status changed
-      const wasArchived = existingEvent.archived === true;
+      const wasArchived = eventToUpdate.archived === true;
       const isNowArchived = eventData.archived === true;
       const archivedStatusChanged = wasArchived !== isNowArchived;
       
@@ -198,25 +229,36 @@ io.on("connection", (socket) => {
       const normalizedParticipants = [...new Set(participants.map(p => p?.toLowerCase()).filter(Boolean))];
       const normalizedSharedWith = [...new Set(sharedWith.map(s => s?.toLowerCase()).filter(Boolean))];
       
-      events.set(eventId, {
-        ...existingEvent,
+      // Update the event in storage - this works for both default and newly created events
+      const updatedEvent = {
+        ...eventToUpdate,
         ...eventData,
         participants: normalizedParticipants,
         sharedWith: normalizedSharedWith,
+        ownerId: eventToUpdate.ownerId || actualUserId, // Preserve ownerId
         updatedAt: Date.now(),
-      });
+      };
       
-      // If archived status changed, notify all participants to reload their event lists
-      if (archivedStatusChanged) {
-        normalizedSharedWith.forEach(targetUserId => {
-          if (targetUserId !== actualUserId?.toLowerCase()) {
-            const targetUser = users.get(targetUserId);
-            if (targetUser && targetUser.socketId) {
-              io.to(targetUser.socketId).emit("events:reload");
-              console.log(`[Socket] Sent events:reload to user ${targetUserId} for archived status change on event ${eventId}`);
-            }
-          }
-        });
+      events.set(eventId, updatedEvent);
+      console.log(`[Socket] Updated event ${eventId} in storage. Participants: [${normalizedParticipants.join(', ')}], sharedWith: [${normalizedSharedWith.join(', ')}]`);
+      
+      // Verify the update was saved correctly
+      const savedEvent = events.get(eventId);
+      if (!savedEvent) {
+        console.error(`[Socket] ERROR: Event ${eventId} was not found in storage after update!`);
+      } else {
+        const savedParticipants = (savedEvent.participants || []).map(p => p?.toLowerCase()).join(',');
+        const savedSharedWith = (savedEvent.sharedWith || []).map(s => s?.toLowerCase()).join(',');
+        const expectedParticipants = normalizedParticipants.join(',');
+        const expectedSharedWith = normalizedSharedWith.join(',');
+        
+        if (savedParticipants !== expectedParticipants || savedSharedWith !== expectedSharedWith) {
+          console.error(`[Socket] ERROR: Event ${eventId} was not updated correctly!`);
+          console.error(`[Socket]   Expected participants: [${expectedParticipants}], got: [${savedParticipants}]`);
+          console.error(`[Socket]   Expected sharedWith: [${expectedSharedWith}], got: [${savedSharedWith}]`);
+        } else {
+          console.log(`[Socket] Verified: Event ${eventId} was updated correctly in storage`);
+        }
       }
       
       // Calculate newly added and removed users for notification
@@ -238,22 +280,35 @@ io.on("connection", (socket) => {
           }
         });
         
-        // Notify removed users to reload their event list (so they stop seeing the event)
+        // Notify removed users - send event:delete so they remove it immediately
+        // IMPORTANT: This only affects the specific event (eventId), not other events
         removedUsers.forEach(targetUserId => {
           const targetUser = users.get(targetUserId);
           if (targetUser && targetUser.socketId) {
+            // Send event:delete with the SPECIFIC eventId - this only removes access to THIS event
+            console.log(`[Socket] Removing access for user ${targetUserId} to SPECIFIC event ${eventId} only`);
+            io.to(targetUser.socketId).emit("event:delete", {
+              eventId: eventId, // SPECIFIC event ID - only this event will be removed
+              fromUserId: actualUserId?.toLowerCase(),
+            });
+            console.log(`[Socket] Sent event:delete to removed user ${targetUserId} for SPECIFIC event ${eventId} (this does NOT affect other events)`);
+            // Also send events:reload as backup (will filter based on access)
             io.to(targetUser.socketId).emit("events:reload");
             console.log(`[Socket] Sent events:reload to removed user ${targetUserId} for event ${eventId}`);
+          } else {
+            console.log(`[Socket] User ${targetUserId} not found or not online, cannot send event:delete for event ${eventId}`);
           }
         });
       }
       
       // Notify all users who have access to this event (use normalized arrays)
       console.log(`[Socket] Preparing to notify users in sharedWith: ${normalizedSharedWith.join(', ')}, sender: ${actualUserId}`);
-            const eventToSend = events.get(eventId);
+      
+      // Get the updated event from storage (after it was updated above)
+      const eventToSend = events.get(eventId);
       // Ensure participants and sharedWith are normalized (lowercase IDs only, no duplicates)
       const normalizedEventToSend = {
-              ...eventToSend,
+        ...eventToSend,
         participants: normalizedParticipants,
         sharedWith: normalizedSharedWith,
       };
@@ -275,7 +330,8 @@ io.on("connection", (socket) => {
         console.log(`[Socket] Event ${eventId} archived status: ${normalizedEventToSend.archived}`);
       }
       
-      // Only send event:update to existing participants (not newly added ones - they already got events:reload)
+      // Send event:update to all participants (including when archived status changes)
+      // This ensures real-time updates for archive/unarchive operations
       normalizedSharedWith.forEach(targetUserId => {
         const normalizedActualUserId = actualUserId?.toLowerCase();
         if (targetUserId !== normalizedActualUserId) { // Don't send back to sender
@@ -289,7 +345,7 @@ io.on("connection", (socket) => {
           console.log(`[Socket] Checking user ${targetUserId}:`, targetUser ? `found (socketId=${targetUser.socketId}, online=${targetUser.online})` : 'not found');
           if (targetUser && targetUser.socketId) {
             // Items already have user IDs - send as-is
-            console.log(`[Socket] Sending event:update to user ${targetUserId} (socketId=${targetUser.socketId}), items count: ${normalizedEventToSend.items?.length || 0}`);
+            console.log(`[Socket] Sending event:update to user ${targetUserId} (socketId=${targetUser.socketId}), archived: ${normalizedEventToSend.archived}, items count: ${normalizedEventToSend.items?.length || 0}`);
             io.to(targetUser.socketId).emit("event:update", {
               eventId,
               eventData: normalizedEventToSend,
@@ -306,7 +362,97 @@ io.on("connection", (socket) => {
       });
       
       console.log(`[Socket] Event updated: ${eventId} by ${actualUserId}, sharedWith: ${sharedWith.join(', ')}`);
+    } else {
+      console.error(`[Socket] Failed to update event ${eventId} - event not found after creation`);
     }
+  });
+
+  // Handle event deletion via socket
+  socket.on("event:delete", (payload) => {
+    const { eventId } = payload;
+    
+    if (!eventId) {
+      console.error('[Socket] Invalid event:delete payload - missing eventId');
+      return;
+    }
+    
+    // Get current userId from socket
+    const currentUserId = socket.handshake.query.userId || userId;
+    const userInfo = getUserBySocketId(socket.id);
+    const actualUserId = userInfo?.userId || currentUserId;
+    const normalizedUserId = actualUserId?.toLowerCase();
+    
+    console.log(`[Socket] event:delete from userId=${normalizedUserId} (socketId=${socket.id}) for event ${eventId}`);
+    
+    const event = events.get(eventId);
+    if (!event) {
+      console.log(`[Socket] Event ${eventId} not found in storage (may have been already deleted)`);
+      // Still broadcast deletion in case other clients have it
+      // Get participants from the payload if provided, or use empty array
+      const participants = payload.participants || [];
+      participants.forEach(targetUserId => {
+        if (targetUserId && targetUserId.toLowerCase() !== normalizedUserId) {
+          const targetUser = users.get(targetUserId.toLowerCase());
+          if (targetUser && targetUser.socketId) {
+            io.to(targetUser.socketId).emit("event:delete", {
+              eventId,
+              fromUserId: normalizedUserId,
+            });
+            console.log(`[Socket] Sent event:delete to user ${targetUserId} for event ${eventId}`);
+          }
+        }
+      });
+      return;
+    }
+    
+    // Check if user has permission to delete (must be owner or in sharedWith)
+    const ownerId = event.ownerId || normalizedUserId;
+    const sharedWith = event.sharedWith || [];
+    const participants = event.participants || [];
+    
+    // Normalize all IDs for comparison
+    const normalizedOwnerId = ownerId?.toLowerCase();
+    const normalizedSharedWith = sharedWith.map(id => id?.toLowerCase());
+    const normalizedParticipants = participants.map(id => id?.toLowerCase());
+    
+    console.log(`[Socket] Checking permissions - userId: ${normalizedUserId}, ownerId: ${normalizedOwnerId}, sharedWith: ${normalizedSharedWith.join(', ')}, participants: ${normalizedParticipants.join(', ')}`);
+    
+    if (normalizedOwnerId !== normalizedUserId && 
+        !normalizedSharedWith.includes(normalizedUserId) &&
+        !normalizedParticipants.includes(normalizedUserId)) {
+      console.error(`[Socket] User ${normalizedUserId} is not authorized to delete event ${eventId}`);
+      return;
+    }
+    
+    // Get all participants who should be notified
+    const allParticipants = [...new Set([
+      ...(sharedWith || []),
+      ...(participants || []),
+      ownerId
+    ].filter(id => id && typeof id === 'string').map(id => id.toLowerCase()))];
+    
+    // Delete the event and mark it as deleted to prevent recreation
+    events.delete(eventId);
+    deletedEvents.add(eventId);
+    console.log(`[Socket] Event ${eventId} deleted by user ${normalizedUserId} (marked as deleted to prevent recreation)`);
+    
+    // Broadcast deletion to all participants
+    allParticipants.forEach(targetUserId => {
+      if (targetUserId !== normalizedUserId) { // Don't notify the deleter
+        const targetUser = users.get(targetUserId);
+        if (targetUser && targetUser.socketId) {
+          io.to(targetUser.socketId).emit("event:delete", {
+            eventId,
+            fromUserId: normalizedUserId,
+          });
+          console.log(`[Socket] Sent event:delete to user ${targetUserId} for event ${eventId}`);
+        } else {
+          console.log(`[Socket] User ${targetUserId} not found or not online, cannot send event:delete for event ${eventId}`);
+        }
+      }
+    });
+    
+    console.log(`[Socket] Event ${eventId} deletion broadcast complete`);
   });
 
   socket.on("disconnect", () => {
@@ -360,7 +506,8 @@ const ensureAliceAndBobFriendship = () => {
 };
 
 // Helper to create default events (Friendsgiving and Roommates 602)
-// Always hardcode Alice and Bob as participants since they're the only users
+// Only creates them if they don't exist - does NOT overwrite existing events
+// This allows participants to be modified without being reset
 const ensureDefaultEvents = () => {
   const aliceId = 'alice';
   const bobId = 'bob';
@@ -368,11 +515,12 @@ const ensureDefaultEvents = () => {
   const participants = [aliceId, bobId];
   const ownerId = aliceId; // Alice is the owner
   
-  console.log(`[API] ensureDefaultEvents: creating events with participants [${participants.join(', ')}]`);
+  console.log(`[API] ensureDefaultEvents: checking if default events exist`);
   
   let eventsCreated = false;
   
-  // Create Friendsgiving event if it doesn't exist and hasn't been deleted
+  // Create Friendsgiving event ONLY if it doesn't exist and hasn't been deleted
+  // DO NOT overwrite if it already exists (participants may have been modified)
   if (!events.has(FRIENDSGIVING_EVENT_ID) && !deletedEvents.has(FRIENDSGIVING_EVENT_ID)) {
     const friendsgivingEvent = {
       id: FRIENDSGIVING_EVENT_ID,
@@ -395,9 +543,14 @@ const ensureDefaultEvents = () => {
     events.set(FRIENDSGIVING_EVENT_ID, friendsgivingEvent);
     console.log(`[API] Created default Friendsgiving event (shared with ${sharedWith.join(', ')})`);
     eventsCreated = true;
+  } else if (events.has(FRIENDSGIVING_EVENT_ID)) {
+    // Event exists - do NOT overwrite it, just log
+    const existingEvent = events.get(FRIENDSGIVING_EVENT_ID);
+    console.log(`[API] Friendsgiving event already exists with participants: [${(existingEvent.participants || []).join(', ')}], sharedWith: [${(existingEvent.sharedWith || []).join(', ')}] - NOT overwriting`);
   }
   
-  // Create Roommates 602 event if it doesn't exist and hasn't been deleted
+  // Create Roommates 602 event ONLY if it doesn't exist and hasn't been deleted
+  // DO NOT overwrite if it already exists (participants may have been modified)
   if (!events.has(ROOMMATES_EVENT_ID) && !deletedEvents.has(ROOMMATES_EVENT_ID)) {
     const roommatesEvent = {
       id: ROOMMATES_EVENT_ID,
@@ -419,6 +572,10 @@ const ensureDefaultEvents = () => {
     events.set(ROOMMATES_EVENT_ID, roommatesEvent);
     console.log(`[API] Created default Unit 602 Roommates event (shared with ${sharedWith.join(', ')})`);
     eventsCreated = true;
+  } else if (events.has(ROOMMATES_EVENT_ID)) {
+    // Event exists - do NOT overwrite it, just log
+    const existingEvent = events.get(ROOMMATES_EVENT_ID);
+    console.log(`[API] Roommates 602 event already exists with participants: [${(existingEvent.participants || []).join(', ')}], sharedWith: [${(existingEvent.sharedWith || []).join(', ')}] - NOT overwriting`);
   }
   
   // If events were created, notify online users to reload
@@ -510,10 +667,20 @@ app.get("/api/events/:userId", (req, res) => {
   
   console.log(`[API] GET /api/events/${userId} (normalized: ${normalizedUserId}) - Total events in storage: ${events.size}`);
   
-  // Ensure default events exist before returning
+  // Ensure default events exist before returning (only creates if they don't exist)
   const eventsCreated = ensureDefaultEvents();
   if (eventsCreated) {
     console.log(`[API] Default events were just created`);
+  } else {
+    // Log existing default events to verify they weren't recreated
+    const friendsgivingEvent = events.get(FRIENDSGIVING_EVENT_ID);
+    const roommatesEvent = events.get(ROOMMATES_EVENT_ID);
+    if (friendsgivingEvent) {
+      console.log(`[API] Friendsgiving event exists with participants: [${(friendsgivingEvent.participants || []).join(', ')}], sharedWith: [${(friendsgivingEvent.sharedWith || []).join(', ')}]`);
+    }
+    if (roommatesEvent) {
+      console.log(`[API] Roommates 602 event exists with participants: [${(roommatesEvent.participants || []).join(', ')}], sharedWith: [${(roommatesEvent.sharedWith || []).join(', ')}]`);
+    }
   }
   
   const userEvents = [];
@@ -522,14 +689,20 @@ app.get("/api/events/:userId", (req, res) => {
     const normalizedOwnerId = event.ownerId?.toLowerCase();
     const normalizedSharedWith = (event.sharedWith || []).map(id => id?.toLowerCase());
     
-    // Include events owned by user or shared with user (case-insensitive comparison)
-    if (normalizedOwnerId === normalizedUserId || normalizedSharedWith.includes(normalizedUserId)) {
-      console.log(`[API] Event ${eventId} matches user ${normalizedUserId} (owner: ${normalizedOwnerId}, sharedWith: ${normalizedSharedWith.join(', ')})`);
+    // IMPORTANT: Only check sharedWith and ownerId for access control
+    // Do NOT check participants, as participants can include dummy friends who don't have access
+    // sharedWith is the source of truth for who has access to the event
+    const hasAccess = normalizedOwnerId === normalizedUserId || normalizedSharedWith.includes(normalizedUserId);
+    
+    if (hasAccess) {
+      console.log(`[API] Event ${eventId} (${event.title}) matches user ${normalizedUserId} - owner: ${normalizedOwnerId === normalizedUserId}, in sharedWith: ${normalizedSharedWith.includes(normalizedUserId)}`);
+      console.log(`[API]   Event details: ownerId=${normalizedOwnerId}, sharedWith=[${normalizedSharedWith.join(', ')}], participants=[${(event.participants || []).join(', ')}]`);
       
       // Items already have user IDs - send as-is
       userEvents.push(event);
     } else {
-      console.log(`[API] Event ${eventId} does NOT match: ownerId=${normalizedOwnerId}, sharedWith=${JSON.stringify(normalizedSharedWith)}, userId=${normalizedUserId}`);
+      console.log(`[API] Event ${eventId} (${event.title}) does NOT match user ${normalizedUserId} - user not in sharedWith and not owner`);
+      console.log(`[API]   Event details: ownerId=${normalizedOwnerId}, sharedWith=[${normalizedSharedWith.join(', ')}], participants=[${(event.participants || []).join(', ')}]`);
     }
   }
   

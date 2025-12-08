@@ -772,7 +772,7 @@ export default function EventDetailScreen({ route, navigation }) {
           ? { 
               ...item, 
               price: formatPrice(editingPriceValue),
-              boughtBy: currentUser?.id || item.boughtBy, // Update boughtBy when price is set
+              boughtBy: item.boughtBy || currentUser?.id, // Preserve original buyer, or set to current user if not set
             } 
           : item
       )
