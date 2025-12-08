@@ -116,6 +116,10 @@ export default function EventDetailScreen({ route, navigation }) {
   const [uncheckItemModalVisible, setUncheckItemModalVisible] = useState(false);
   const [itemToUncheck, setItemToUncheck] = useState(null);
 
+  // buy claimed item alert modal
+  const [buyClaimedItemModalVisible, setBuyClaimedItemModalVisible] = useState(false);
+  const [itemToBuyClaimed, setItemToBuyClaimed] = useState(null);
+
   const [items, setItems] = useState(
     initialItems && Array.isArray(initialItems)
       ? JSON.parse(JSON.stringify(initialItems))
@@ -673,6 +677,18 @@ export default function EventDetailScreen({ route, navigation }) {
     if (isReadOnly) return showArchivedAlert();
 
     if (!item.bought) {
+      // Check if item is claimed by someone other than current user
+      const itemClaimedBy = item.claimedBy;
+      const isClaimedByOther = itemClaimedBy && 
+        normalizeUserId(itemClaimedBy) !== normalizeUserId(currentUser?.id);
+      
+      if (isClaimedByOther) {
+        // Show alert before buying an item claimed by someone else
+        setItemToBuyClaimed(item);
+        setBuyClaimedItemModalVisible(true);
+        return;
+      }
+      
       setSelectedItem(item);
       setPriceInput('');
       // Default share: everyone in participants (or just current user if empty)
@@ -696,6 +712,7 @@ export default function EventDetailScreen({ route, navigation }) {
               bought: false,
               price: null,
               claimedBy: null,
+              boughtBy: null, // Clear boughtBy when unchecking
               sharedBy: undefined,
             }
           : it
@@ -708,6 +725,24 @@ export default function EventDetailScreen({ route, navigation }) {
   const cancelUncheckItem = () => {
     setUncheckItemModalVisible(false);
     setItemToUncheck(null);
+  };
+
+  const confirmBuyClaimedItem = () => {
+    if (!itemToBuyClaimed) return;
+    // Proceed with buying the item (will update claimedBy to current user)
+    setSelectedItem(itemToBuyClaimed);
+    setPriceInput('');
+    // Default share: everyone in participants (or just current user if empty)
+    setBuySharedBy(participants.length > 0 ? [...participants] : [currentUser?.id].filter(Boolean));
+    setShareDropdownVisible(false);
+    setBuyClaimedItemModalVisible(false);
+    setItemToBuyClaimed(null);
+    setBuyModalVisible(true);
+  };
+
+  const cancelBuyClaimedItem = () => {
+    setBuyClaimedItemModalVisible(false);
+    setItemToBuyClaimed(null);
   };
 
   // Helper function to format price to 2 decimal places
@@ -733,7 +768,13 @@ export default function EventDetailScreen({ route, navigation }) {
     if (isReadOnly) return showArchivedAlert();
     setItems(current =>
       current.map(item =>
-        item.id === itemId ? { ...item, price: formatPrice(editingPriceValue) } : item
+        item.id === itemId 
+          ? { 
+              ...item, 
+              price: formatPrice(editingPriceValue),
+              boughtBy: currentUser?.id || item.boughtBy, // Update boughtBy when price is set
+            } 
+          : item
       )
     );
     setEditingPriceItemId(null);
@@ -775,6 +816,7 @@ export default function EventDetailScreen({ route, navigation }) {
               bought: true,
               price: formattedPrice,
               claimedBy: currentUser?.id || null,
+              boughtBy: currentUser?.id || null, // Track who actually bought the item
               sharedBy: finalSharedBy,
             }
           : item
@@ -1427,14 +1469,16 @@ export default function EventDetailScreen({ route, navigation }) {
           </>
         )}
 
-        {/* buyer badge on recent list */}
-        {!isActiveList && item.claimedBy && (() => {
-          const userColors = getUserColors(item.claimedBy);
-          const userName = getUserNameFromId(item.claimedBy);
+        {/* buyer badge on recent list - show who bought it, not who claimed it */}
+        {!isActiveList && item.bought && (item.boughtBy || item.claimedBy) && (() => {
+          // Use boughtBy if available, otherwise fall back to claimedBy
+          const buyerId = item.boughtBy || item.claimedBy;
+          const userColors = getUserColors(buyerId);
+          const userName = getUserNameFromId(buyerId);
           return (
             <View style={[detailStyles.avatarSmall, { backgroundColor: userColors.backgroundColor }]}>
               <Text style={[detailStyles.avatarTextSmall, { color: userColors.textColor }]}>
-                {getUserInitial(item.claimedBy, userName)}
+                {getUserInitial(buyerId, userName)}
               </Text>
             </View>
           );
@@ -2448,6 +2492,48 @@ export default function EventDetailScreen({ route, navigation }) {
                     <TouchableOpacity
                       style={alertStyles.alertModalConfirmBtn}
                       onPress={confirmUncheckItem}
+                    >
+                      <FontAwesome5 name="check" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* BUY CLAIMED ITEM ALERT MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={buyClaimedItemModalVisible}
+        onRequestClose={cancelBuyClaimedItem}
+      >
+        <TouchableWithoutFeedback onPress={cancelBuyClaimedItem}>
+          <View style={globalStyles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={alertStyles.alertModalContainer}>
+                  <Text style={alertStyles.alertModalTitle}>Item Claimed by Another User</Text>
+                  <Text style={alertStyles.alertModalMessage}>
+                    {itemToBuyClaimed
+                      ? `This item is claimed by ${getUserNameFromId(itemToBuyClaimed.claimedBy) || itemToBuyClaimed.claimedBy}. Are you sure you want to buy it? This will update the claim to your account.`
+                      : 'This item is claimed by another user. Are you sure you want to buy it?'}
+                  </Text>
+                  <View style={alertStyles.alertModalActions}>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalCancelBtn}
+                      onPress={cancelBuyClaimedItem}
+                    >
+                      <FontAwesome5 name="times" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={alertStyles.alertModalConfirmBtn}
+                      onPress={confirmBuyClaimedItem}
                     >
                       <FontAwesome5 name="check" size={16} color="#fff" />
                     </TouchableOpacity>

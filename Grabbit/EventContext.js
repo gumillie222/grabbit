@@ -14,6 +14,8 @@ export const EventProvider = ({ children }) => {
   const socketRef = useRef(null);
   const eventsRef = useRef([]);
   const archivedEventsRef = useRef([]);
+  // Track locally deleted event IDs to prevent them from being restored on reload
+  const deletedEventIdsRef = useRef(new Set());
 
   // Active events (home)
   const [events, setEvents] = useState([]);
@@ -90,6 +92,11 @@ export const EventProvider = ({ children }) => {
       const archivedEventsList = [];
       
       backendEvents.forEach(e => {
+        // Skip events that were locally deleted (even if they still exist on backend)
+        if (deletedEventIdsRef.current.has(e.id)) {
+          return;
+        }
+        
         const formattedEvent = {
           id: e.id,
           title: e.title,
@@ -366,15 +373,33 @@ export const EventProvider = ({ children }) => {
         // sharedWith should be the same as participants (both are IDs now)
         const sharedWith = participantsWithUser;
         
-        await api.saveEvent(currentUser.id, newEvent.id, {
+        console.log('[EventContext] Saving new event to backend:', {
+          eventId: newEvent.id,
+          title: eventToAdd.title,
+          participants: participantsWithUser,
+          userId: currentUser.id
+        });
+        
+        const saveResponse = await api.saveEvent(currentUser.id, newEvent.id, {
           title: eventToAdd.title,
           items: eventToAdd.items,
           participants: participantsWithUser, // Send IDs to backend
           sharedWith,
         });
         
+        console.log('[EventContext] Successfully saved new event to backend, response:', saveResponse);
+        
+        // Mark event as no longer new after successful save
+        setEvents(currentEvents => {
+          const updated = currentEvents.map(e => 
+            e.id === newEvent.id ? { ...e, isNew: false } : e
+          );
+          eventsRef.current = updated;
+          return updated;
+        });
+        
         // Send real-time update via socket
-        if (socketRef.current) {
+        if (socketRef.current && socketRef.current.connected) {
           socketRef.current.emit('event:update', {
             eventId: newEvent.id,
             eventData: {
@@ -383,9 +408,15 @@ export const EventProvider = ({ children }) => {
               participants: eventToAdd.participants,
             },
           });
+          console.log('[EventContext] Sent socket update for new event');
+        } else {
+          console.warn('[EventContext] Socket not connected, cannot send real-time update for new event');
         }
       } catch (err) {
         console.error('[EventContext] Failed to sync new event:', err);
+        console.error('[EventContext] Event will remain in local state with isNew: true');
+        // Event remains in local state with isNew: true
+        // It can be retried later or will be saved when user comes back online
       }
     }
   };
@@ -501,6 +532,11 @@ export const EventProvider = ({ children }) => {
   };
 
   const deleteEvent = async (id) => {
+    // Find the event to check if it was ever saved to backend
+    // MUST check BEFORE removing from arrays
+    const eventToDelete = events.find(e => e.id === id) || archivedEvents.find(e => e.id === id);
+    const isNewEvent = eventToDelete?.isNew === true;
+    
     // Update local state immediately
     setEvents(prev => {
       const updated = prev.filter(e => e.id !== id);
@@ -515,6 +551,17 @@ export const EventProvider = ({ children }) => {
 
     // Sync with backend and broadcast to all participants
     if (currentUser?.id) {
+      // If event was never saved to backend (isNew: true), skip backend call
+      if (isNewEvent) {
+        // Still broadcast deletion via socket in case other clients have it
+        if (socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit('event:delete', {
+            eventId: id,
+          });
+        }
+        return;
+      }
+      
       try {
         await api.deleteEvent(currentUser.id, id);
 
@@ -525,9 +572,22 @@ export const EventProvider = ({ children }) => {
           });
         }
       } catch (err) {
-        console.error('[EventContext] Failed to delete event:', err);
-        // Optionally reload events to restore state on error
-        reloadEvents();
+        // If event not found (404), it might have been already deleted or never synced
+        // In this case, still broadcast the deletion via socket and proceed silently
+        // The local state has already been updated, so we don't need to rollback
+        if (err.message && err.message.includes('404')) {
+          // Event doesn't exist on server - silently handle and broadcast deletion via socket
+          if (socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit('event:delete', {
+              eventId: id,
+            });
+          }
+          // Silently proceed - no error logging for expected 404
+        } else {
+          // For other errors, reload events to restore state
+          console.error('[EventContext] Failed to delete event:', err);
+          reloadEvents();
+        }
       }
     }
   };

@@ -76,7 +76,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, eventId, eventData }),
     });
-    if (!response.ok) throw new Error('Failed to save event');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[API] saveEvent failed: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`Failed to save event: ${response.status} ${response.statusText}`);
+    }
     return response.json();
   },
 
@@ -88,7 +92,10 @@ export const api = {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[API] deleteEvent failed: ${response.status} ${response.statusText}`, errorText);
+      // Only log non-404 errors (404 is expected for events that don't exist)
+      if (response.status !== 404) {
+        console.error(`[API] deleteEvent failed: ${response.status} ${response.statusText}`, errorText);
+      }
       throw new Error(`Failed to delete event: ${response.status} ${response.statusText}`);
     }
     return response.json();

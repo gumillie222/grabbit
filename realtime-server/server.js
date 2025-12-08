@@ -561,8 +561,12 @@ app.post("/api/events", (req, res) => {
   const eventIdToUse = eventId || `event_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const existingEvent = events.get(eventIdToUse);
   
+  // Normalize userId for consistency
+  const normalizedUserId = userId.toLowerCase();
+  
   // Participants are already user IDs - use them directly for sharedWith
-  let sharedWith = [userId]; // Start with owner
+  let sharedWith = [normalizedUserId]; // Start with owner
+  let participants = []; // Declare participants variable
   
   if (eventData.participants && Array.isArray(eventData.participants)) {
     // Normalize participants to lowercase IDs (handle both names and IDs)
@@ -582,7 +586,7 @@ app.post("/api/events", (req, res) => {
     
     // Build sharedWith from normalized participants, but only include registered users
     // sharedWith is used for access control, so it should only include real users
-    sharedWith = [userId]; // Start with owner
+    sharedWith = [normalizedUserId]; // Start with owner
     for (const participantId of normalizedParticipants) {
       if (participantId && !sharedWith.includes(participantId)) {
         // Only add to sharedWith if it's a registered user (for access control)
@@ -605,7 +609,7 @@ app.post("/api/events", (req, res) => {
     participants = normalizedParticipants;
   } else {
     // If no participants provided, use existing sharedWith or provided sharedWith
-    sharedWith = eventData.sharedWith || existingEvent?.sharedWith || [userId];
+    sharedWith = (eventData.sharedWith || existingEvent?.sharedWith || [normalizedUserId]).map(id => id.toLowerCase());
     // Ensure no duplicates in existing array
     const seen = new Set();
     sharedWith = sharedWith.filter(id => {
@@ -614,26 +618,23 @@ app.post("/api/events", (req, res) => {
       return true;
     });
     // Ensure owner is included
-    if (!sharedWith.includes(userId)) {
-      sharedWith.unshift(userId);
+    if (!sharedWith.includes(normalizedUserId)) {
+      sharedWith.unshift(normalizedUserId);
     }
+    // Use existing participants or empty array
+    participants = existingEvent?.participants || [];
   }
   
   // Validate: ensure owner is always in sharedWith (should already be there, but double-check)
-  if (!sharedWith.includes(userId)) {
-    sharedWith.unshift(userId); // Add owner at the beginning
+  if (!sharedWith.includes(normalizedUserId)) {
+    sharedWith.unshift(normalizedUserId); // Add owner at the beginning
   }
   
   console.log(`[API] Final sharedWith: ${sharedWith.join(', ')}`);
+  console.log(`[API] Saving event with ID: ${eventIdToUse}`);
   
   // Items already have user IDs in claimedBy and sharedBy fields
-  const ownerId = existingEvent?.ownerId || userId;
-  
-  // Participants are already normalized above if eventData.participants was provided
-  // Otherwise, use existing participants or empty array
-  if (!participants) {
-    participants = existingEvent?.participants || [];
-  }
+  const ownerId = existingEvent?.ownerId || normalizedUserId;
   
   // Normalize participants and sharedWith before storing (lowercase, no duplicates)
   const normalizedParticipants = [...new Set((participants || []).map(p => p.toLowerCase()))];
@@ -649,7 +650,16 @@ app.post("/api/events", (req, res) => {
     updatedAt: Date.now(),
   };
   
+  // Save the event to storage
   events.set(eventIdToUse, event);
+  console.log(`[API] Event saved successfully: ${eventIdToUse}, title: ${event.title || 'Untitled'}, owner: ${ownerId}, sharedWith: ${normalizedSharedWith.join(', ')}`);
+  
+  // Verify the event was saved
+  const savedEvent = events.get(eventIdToUse);
+  if (!savedEvent) {
+    console.error(`[API] ERROR: Event ${eventIdToUse} was not saved properly!`);
+    return res.status(500).json({ error: "Failed to save event" });
+  }
   
   // Update local variables to use normalized values for notifications
   participants = normalizedParticipants;
@@ -785,20 +795,36 @@ app.delete("/api/events/:eventId", (req, res) => {
     return res.status(400).json({ error: "userId is required" });
   }
   
+  const normalizedUserId = userId.toLowerCase();
+  
+  console.log(`[API] DELETE /api/events/${eventId} by user ${normalizedUserId}`);
+  console.log(`[API] Total events in storage: ${events.size}`);
+  console.log(`[API] Event IDs in storage:`, Array.from(events.keys()));
+  
   const event = events.get(eventId);
   if (!event) {
+    console.error(`[API] Event ${eventId} not found in storage`);
     return res.status(404).json({ error: "Event not found" });
   }
   
+  console.log(`[API] Found event: ${eventId}, owner: ${event.ownerId}, sharedWith: ${event.sharedWith?.join(', ') || 'none'}`);
+  
   // Check if user has permission to delete (must be owner or participant)
-  const ownerId = event.ownerId || userId;
+  const ownerId = event.ownerId || normalizedUserId;
   const sharedWith = event.sharedWith || [];
   const participants = event.participants || [];
-  const normalizedUserId = userId.toLowerCase();
   
-  if (ownerId.toLowerCase() !== normalizedUserId && 
-      !sharedWith.some(id => id.toLowerCase() === normalizedUserId) &&
-      !participants.some(id => id.toLowerCase() === normalizedUserId)) {
+  // Normalize all IDs for comparison
+  const normalizedOwnerId = ownerId?.toLowerCase();
+  const normalizedSharedWith = sharedWith.map(id => id?.toLowerCase());
+  const normalizedParticipants = participants.map(id => id?.toLowerCase());
+  
+  console.log(`[API] Checking permissions - userId: ${normalizedUserId}, ownerId: ${normalizedOwnerId}, sharedWith: ${normalizedSharedWith.join(', ')}, participants: ${normalizedParticipants.join(', ')}`);
+  
+  if (normalizedOwnerId !== normalizedUserId && 
+      !normalizedSharedWith.includes(normalizedUserId) &&
+      !normalizedParticipants.includes(normalizedUserId)) {
+    console.error(`[API] User ${normalizedUserId} is not authorized to delete event ${eventId}`);
     return res.status(403).json({ error: "Not authorized to delete this event" });
   }
   
