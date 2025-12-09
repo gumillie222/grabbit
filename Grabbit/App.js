@@ -1,3 +1,4 @@
+// App.js - Root navigator and provider wiring for authentication + event state with tab navigation
 import React, { useCallback } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import 'react-native-gesture-handler';

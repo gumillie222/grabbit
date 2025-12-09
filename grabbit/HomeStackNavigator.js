@@ -1,3 +1,4 @@
+// HomeStackNavigator.js - Wraps home list + detail screens in a stack for nested navigation inside tabs
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 

@@ -1,3 +1,4 @@
+// AuthContext.js - Handles demo login, account switching, and backend registration persistence
 import React, { createContext, useEffect, useState, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SERVER_URL } from './config';

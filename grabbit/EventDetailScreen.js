@@ -1,3 +1,4 @@
+// EventDetailScreen.js - Item-level management UI with claim/buy toggles and socket sync for one event
 import React, { useState, useMemo, useEffect, useContext, useRef } from 'react';
 import {
   View,
@@ -2627,4 +2628,3 @@ const styles = {
     borderLeftColor: colors.text,
   },
 };
-

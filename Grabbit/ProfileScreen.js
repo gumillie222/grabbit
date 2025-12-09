@@ -1,3 +1,4 @@
+// ProfileScreen.js - Manages account switching, archived events, and friend management with socket presence
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import {
   View,

@@ -1,47 +1,49 @@
 # Grabbit – Realtime Shared Shopping List with AI Suggestions
 
-Grabbit is a collaborative shopping list app prototype built with React Native (Expo) and a Node.js + Express + Socket.IO backend.
-It demonstrates:
-* Realtime updates across devices (via WebSockets)
-* AI-powered item suggestions using OpenAI's API
-* A clean, mobile-first UI for shared shopping planning
-
+Grabbit is a collaborative shopping-list prototype built with Expo (React Native) and a Node.js + Socket.IO backend. It demonstrates:
+* Realtime updates across devices via WebSockets
+* AI-powered shopping suggestions
+* Lightweight friend management plus archiving workflows
 
 ## Prerequisites
-* Xcode (for iOS simulator)
-* An OpenAI API key from https://platform.openai.com/api-keys
+* Node.js 18+
+* Xcode (iOS simulator) and/or Android Studio (Android emulator) if you want to stay on one machine
+* Expo CLI (`npm install -g expo-cli`) and the Expo Go app for physical devices
+* Optional: an OpenAI API key for suggestion generation
 
-## Setup Instructions
+## Running the Stack
 
-To run the app, first run the backend:
-```
-cd realtime-server
-node server.js
-```
-You should see: Realtime + AI server running on port 3000
+1. **Start the backend server**
+   ```bash
+   cd realtime-server
+   npm install            # first run only
+   node server.js
+   ```
+   The server listens on `http://0.0.0.0:4000` and logs “Realtime + AI server running on port 4000”.
 
-Then in a different terminal, run the frontend:
-```
-cd Grabbit
-npm start
-```
+2. **Start the Expo app**
+   ```bash
+   cd Grabbit
+   npm install            # first run only
+   npm start
+   ```
+   * Press `i` to launch the iOS simulator, `a` for Android, or scan the QR code with Expo Go on a phone.
+   * `config.js` automatically points to the Metro host IP for physical devices. If detection ever fails, update `FALLBACK_LOCAL_IP`.
 
-You can now choose one of the following:
+## Cross-Device Testing
 
-Option A – Web
-- Press w in the terminal
-- Runs in browser at http://localhost:8081
+Grabbit shines when two users collaborate in realtime. Pick one of these flows:
 
-Option B – iOS Simulator
-- Press i in the terminal
-- Runs on the Xcode iOS simulator
-- Works directly with http://localhost:3000 backend
+1. Make sure all devices are on the same Wi-Fi network.
+2. Scan the Expo QR code on both phones (or open two iOS simulators on laptop). The auto IP detection in `config.js` points each device back to your laptop's backend.
+3. Log in as two different demo accounts (Alice/Bob). You can also switch accounts from the Profile tab without reinstalling.
+4. Create an event or toggle claimed/bought flags on one phone, and the other receives updates immediately.
 
 
-## Demo Flow
+## Common Questions & Fixes
 
-* In the app, describe your gathering (e.g., "Hotpot dinner for 5 friends").
-* Tap Generate suggestions (AI proposes items like “thinly sliced beef, broth base, tofu, noodles")
-* Select suggested items and add them to your shared list.
-* Toggle urgent, claimed, or bought for each item.
-* Open a second client (web or another simulator window), updates appear in realtime via WebSockets.
+**Q: Socket connection keeps timing out. What now?**  
+A: Confirm `node server.js` is running, your laptop and devices share Wi-Fi, and no VPN/firewall blocks port 4000. If you are on a release build without Expo metadata, set `FALLBACK_LOCAL_IP` in `Grabbit/config.js` to your machine's LAN IP.
+
+**Q: AI suggestions fail with a 500 error.**  
+A: Ensure `OPENAI_API_KEY` is defined in `realtime-server/.env`. If you don't need AI, failures are logged but the rest of the realtime workflow still works.

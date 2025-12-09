@@ -1,3 +1,4 @@
+// HomeScreen.js - Dashboard listing active/archived events with entry points into creation and detail flows
 import React, { useState, useContext, useEffect } from 'react';
 import {
   View,

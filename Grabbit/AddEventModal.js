@@ -1,3 +1,5 @@
+// AddEventModal.js - Fullscreen workflow for creating/editing events, items, and participants
+// Provides validation, friend selection, and real-time socket updates before persisting changes.
 import React, { useState, useEffect } from 'react';
 import {
   View,

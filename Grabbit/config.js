@@ -2,10 +2,51 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// Your computer's local IP address on the network
-// Update this to match your computer's IP (find it with: ifconfig on Mac/Linux or ipconfig on Windows)
-// Make sure your phone and computer are on the same WiFi network
-const LOCAL_IP = '10.103.106.2';
+// Optional fallback if Expo host detection fails
+// Update this only if your network IP is static and detection below cannot infer it.
+const FALLBACK_LOCAL_IP = '10.0.0.162';
+
+const PORT = 4000;
+
+const isValidIp = (value) => {
+  if (!value) return false;
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(value);
+};
+
+const extractIpFromUri = (uri) => {
+  if (!uri || typeof uri !== 'string') return null;
+  const match = uri.match(/(\d{1,3}(?:\.\d{1,3}){3})/);
+  return match ? match[1] : null;
+};
+
+// When developing with Expo Go/dev client, Expo exposes the Metro host in several manifest fields.
+// We try each one to automatically discover the machine running `expo start`.
+const detectExpoHostIp = () => {
+  const possibleHosts = [
+    Constants.expoConfig?.hostUri,
+    Constants.expoConfig?.extra?.expoGo?.debuggerHost,
+    Constants.expoConfig?.extra?.expoGo?.developer?.host,
+    Constants.manifest2?.extra?.expoGo?.developer?.host,
+    Constants.manifest2?.extra?.expoGo?.debuggerHost,
+    Constants.manifest?.hostUri,
+    Constants.manifest?.debuggerHost,
+  ];
+
+  for (const host of possibleHosts) {
+    const ip = extractIpFromUri(host);
+    if (isValidIp(ip)) {
+      return ip;
+    }
+  }
+
+  return null;
+};
+
+const getLocalNetworkUrl = () => {
+  const autoDetectedIp = detectExpoHostIp();
+  const ipToUse = autoDetectedIp || FALLBACK_LOCAL_IP;
+  return `http://${ipToUse}:${PORT}`;
+};
 
 // Determine the correct server URL based on platform
 const getServerUrl = () => {
@@ -19,10 +60,10 @@ const getServerUrl = () => {
     
     if (isSimulator) {
       // iOS Simulator can use localhost
-      return 'http://localhost:4000';
+      return `http://localhost:${PORT}`;
     } else {
       // Physical iOS device needs the computer's local IP
-      return `http://${LOCAL_IP}:4000`;
+      return getLocalNetworkUrl();
     }
   }
   
@@ -40,16 +81,15 @@ const getServerUrl = () => {
     
     if (isEmulator) {
       // Android Emulator uses 10.0.2.2 (special IP that maps to host's localhost)
-      return 'http://10.0.2.2:4000';
+      return `http://10.0.2.2:${PORT}`;
     } else {
       // Physical Android device needs the computer's local IP
-      return `http://${LOCAL_IP}:4000`;
+      return getLocalNetworkUrl();
     }
   }
   
   // For web or other platforms, use localhost
-  return 'http://localhost:4000';
+  return `http://localhost:${PORT}`;
 };
 
 export const SERVER_URL = getServerUrl();
-

@@ -1,4 +1,4 @@
-// EventContext.js
+// EventContext.js - Central store for events, sockets, archiving, and cross-screen friend data
 import React, { createContext, useState, useEffect, useRef, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io } from 'socket.io-client';
