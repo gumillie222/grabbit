@@ -47,3 +47,7 @@ A: Confirm `node server.js` is running, your laptop and devices share Wi-Fi, and
 
 **Q: AI suggestions fail with a 500 error.**  
 A: Ensure `OPENAI_API_KEY` is defined in `realtime-server/.env`. If you don't need AI, failures are logged but the rest of the realtime workflow still works.
+
+## Attributions
+
+We used Cursor and Codex to help debug tricky issues and scaffold the initial backend syncing structure that powers realtime cross-device collaboration.
